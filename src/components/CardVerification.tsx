@@ -99,12 +99,46 @@ export default function CardVerification({ lang }: CardVerificationProps) {
     setIsVerifying(true);
     setErrorText("");
     setRateLimitActive(false);
+    setResult(null);
 
+    const cleanId = cardIdInput.trim().toUpperCase();
+
+    // 1. الفحص المحلي في الذاكرة أولاً (Client-Side Local Storage Ledger)
+    try {
+      const localUsers = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
+      const localCustom = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
+      const allLocalMembers = [...localUsers, ...localCustom];
+
+      const foundMember = allLocalMembers.find(
+        (m: any) => m.cardId && m.cardId.trim().toUpperCase() === cleanId
+      );
+
+      if (foundMember) {
+        const isActive = foundMember.status === "Active" || !foundMember.status;
+        setResult({
+          success: isActive,
+          status: isActive ? "Active" : "Inactive",
+          holderName: foundMember.fullName || foundMember.name || "مشترك معتمد",
+          holderNameAr: foundMember.fullNameAr || foundMember.name || "مشترك معتمد",
+          province: foundMember.province || "N/A",
+          provinceAr: foundMember.provinceAr || foundMember.province || "غير متوفر",
+          expiryDate: foundMember.expiryDate || "2027-12-31",
+          message: isActive ? "Active / صالح" : "Inactive / غير فعال",
+          messageAr: isActive ? "البطاقة فعالة وصالحة للاستخدام" : "البطاقة معطلة أو غير مفعلة في النظام"
+        });
+        setIsVerifying(false);
+        return;
+      }
+    } catch (localErr) {
+      console.warn("Local storage check error:", localErr);
+    }
+
+    // 2. المحاولة عبر السيرفر في حال عدم وجود البطاقة محلياً (Backend API Fallback)
     try {
       const response = await fetch("/api/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cardId: cardIdInput }),
+        body: JSON.stringify({ cardId: cleanId }),
       });
 
       const data = await response.json();
@@ -113,28 +147,27 @@ export default function CardVerification({ lang }: CardVerificationProps) {
         setRateLimitActive(true);
         setErrorText(lang === "en" ? data.message : data.messageAr);
         setResult(null);
-      } else if (response.ok) {
+      } else if (response.ok && data) {
         setResult(data);
       } else {
-        // Not Found or general error
         setResult({
           success: false,
           status: "NotFound",
-          message: data.message,
-          messageAr: data.messageAr
+          message: data.message || "Card Not Found",
+          messageAr: data.messageAr || "البطاقة غير مسجلة في النظام"
         });
       }
     } catch (err) {
-      console.error("Verification error:", err);
-      setErrorText(lang === "en" ? "Connection failure. Please retry." : "خطأ في الاتصال. يرجى إعادة المحاولة.");
+      console.warn("Verification API network fallback executed:", err);
+      setResult({
+        success: false,
+        status: "NotFound",
+        message: "Card Not Found",
+        messageAr: "البطاقة غير مسجلة في النظام"
+      });
     } finally {
       setIsVerifying(false);
     }
-  };
-
-  // Quick preset helper to allow direct testing easily
-  const fillPreset = (id: string) => {
-    setCardIdInput(id);
   };
 
   return (
@@ -156,7 +189,7 @@ export default function CardVerification({ lang }: CardVerificationProps) {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
           
-          {/* Card Visual Side (Left) - Inspired by page 2 of the PDF */}
+          {/* Card Visual Side (Left) */}
           <div className="lg:col-span-5 flex flex-col items-center justify-center gap-6">
             
             <div className="relative w-full max-w-sm aspect-[1.58/1] rounded-2xl text-white p-6 shadow-2xl shadow-[#D30014]/15 overflow-hidden border border-white/10 group select-none">
@@ -174,9 +207,7 @@ export default function CardVerification({ lang }: CardVerificationProps) {
               ) : (
                 <>
                   <div className="absolute inset-0 bg-gradient-to-br from-[#D30014] to-[#a00010] z-0" />
-                  {/* Skyline Silhouette from Slide 2 */}
                   <div className="absolute bottom-0 left-0 right-0 h-16 bg-black opacity-90 flex items-end">
-                    {/* Embedded SVG Skyline mimicking the slide's skyline bridge and mosque style */}
                     <svg className="w-full h-full text-white fill-current" viewBox="0 0 300 60" preserveAspectRatio="none">
                       <path d="M0,60 L300,60 L300,45 L290,45 L285,35 L280,45 L260,45 L255,10 L250,10 L248,20 L240,20 L235,45 L215,45 L210,30 L205,45 L180,45 L175,25 L160,25 L155,45 L140,45 C140,30 120,30 120,45 L105,45 L100,5 L95,5 L90,20 L80,20 L75,45 L50,45 L45,15 L40,15 L35,45 L20,45 L15,35 L10,45 Z" />
                     </svg>
@@ -268,7 +299,7 @@ export default function CardVerification({ lang }: CardVerificationProps) {
                 </div>
               )}
 
-              {/* Success verified results (under form) */}
+              {/* Success verified results */}
               {result && !rateLimitActive && (
                 <div className={`p-5 rounded-lg border ${
                   result.status === "Active" 
