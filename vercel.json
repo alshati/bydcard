@@ -5,11 +5,7 @@
       "destination": "https://ais-dev-zlyu33fgycerghiddj6die-374615758541.europe-west2.run.app/api/:path*"
     },
     {
-      "source": "/admin-secured-portal",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
