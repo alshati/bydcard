@@ -9,6 +9,8 @@ import {
   Tooltip, 
   Legend, 
   ResponsiveContainer, 
+  LineChart, 
+  Line, 
   AreaChart, 
   Area 
 } from "recharts";
@@ -19,13 +21,17 @@ import {
   TrendingUp, 
   Plus, 
   Search, 
+  Filter, 
   Edit3, 
   Trash2, 
   Video, 
   MapPin, 
   RefreshCw, 
   LogOut,
+  Calendar,
   CheckCircle,
+  XCircle,
+  DollarSign as UsdIcon,
   VideoOff,
   Languages,
   ArrowLeft,
@@ -34,10 +40,14 @@ import {
   CreditCard,
   Download,
   Eye,
+  EyeOff,
+  Shield,
   Copy,
   Check,
-  Shield,
+  Lock,
+  UserPlus,
   FileText,
+  AlertTriangle,
   UserCheck,
   AlertCircle,
   X
@@ -96,6 +106,7 @@ export default function AdminDashboard({
   const [viewerLoading, setViewerLoading] = useState(false);
   const [viewerMsg, setViewerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showViewerPasswords, setShowViewerPasswords] = useState<{ [id: string]: boolean }>({});
 
   // Card Template Management State & Functions
   const [activeTemplate, setActiveTemplate] = useState<{ cardDesignBase64: string; type?: "image" | "video" } | null>(null);
@@ -170,14 +181,17 @@ export default function AdminDashboard({
     if (!file) return;
 
     if (file.size > 4.5 * 1024 * 1024) {
-      alert(lang === "en" ? "File is too large. Please select a file under 4MB." : "حجم الملف كبير جداً. يرجى اختيار ملف بحجم أقل من 4 ميغابايت.");
+      alert(lang === "en" ? "File is too large for local storage prototyping. Please select a file under 4MB." : "الملف كبير جداً للتجربة المحلية. يرجى اختيار ملف بحجم أقل من 4 ميغابايت.");
       return;
     }
 
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64String = reader.result as string;
-      const mediaPayload = { type: selectedAssetType, data: base64String };
+      const mediaPayload = {
+        type: selectedAssetType,
+        data: base64String
+      };
 
       try {
         localStorage.setItem('BYD_CARD_MEDIA', JSON.stringify(mediaPayload));
@@ -203,10 +217,10 @@ export default function AdminDashboard({
 
         window.dispatchEvent(new Event('storage-sync-updated'));
         window.dispatchEvent(new Event('storage'));
-        alert(lang === "en" ? "Multimedia asset saved successfully!" : "تم حفظ أصل الوسائط بنجاح!");
+        alert(lang === "en" ? "Multimedia asset uploaded and saved successfully!" : "تم رفع وحفظ أصل الوسائط المتعددة بنجاح!");
       } catch (err) {
         console.error(err);
-        alert(lang === "en" ? "Failed to save storage." : "فشل الحفظ في الذاكرة.");
+        alert(lang === "en" ? "Quota exceeded or failed to save to storage. Please try a smaller file." : "تم تجاوز الحد المسموح به أو فشل الحفظ. يرجى تجربة ملف أصغر حجماً.");
       }
     };
     reader.readAsDataURL(file);
@@ -228,12 +242,12 @@ export default function AdminDashboard({
         body: JSON.stringify({ cardDesignBase64: "" })
       });
     } catch (err) {
-      console.error(err);
+      console.error("Server template reset ignored:", err);
     }
 
     window.dispatchEvent(new Event('storage-sync-updated'));
     window.dispatchEvent(new Event('storage'));
-    alert(lang === "en" ? "Template reset to default!" : "تمت إعادة تعيين قالب البطاقة للافتراضي!");
+    alert(lang === "en" ? "Card template reset to original default layout!" : "تمت إعادة تعيين قالب البطاقة إلى التصميم الافتراضي الأصلي!");
   };
 
   // Card CRUD States
@@ -252,6 +266,7 @@ export default function AdminDashboard({
     company1Desc: "",
     company1DescAr: "",
     company1Logo: "",
+    
     company2Name: "",
     company2NameAr: "",
     company2Desc: "",
@@ -279,42 +294,66 @@ export default function AdminDashboard({
   const handleSaveBranding = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    const globalEntity1Base64Str = brandingForm.company1Logo;
+    const globalEntity2Base64Str = brandingForm.company2Logo;
+
     const brandData = {
-      entity1NameEn: brandingForm.company1Name,
-      entity1NameAr: brandingForm.company1NameAr,
-      entity1DescEn: brandingForm.company1Desc,
-      entity1DescAr: brandingForm.company1DescAr,
-      entity1Logo: brandingForm.company1Logo,
-      entity2NameEn: brandingForm.company2Name,
-      entity2NameAr: brandingForm.company2NameAr,
-      entity2DescEn: brandingForm.company2Desc,
-      entity2DescAr: brandingForm.company2DescAr,
-      entity2Logo: brandingForm.company2Logo
+      entity1NameEn: (document.getElementById('entity1-name-en') as HTMLInputElement).value,
+      entity1NameAr: (document.getElementById('entity1-name-ar') as HTMLInputElement).value,
+      entity1DescEn: (document.getElementById('entity1-desc-en') as HTMLInputElement).value,
+      entity1DescAr: (document.getElementById('entity1-desc-ar') as HTMLInputElement).value,
+      entity1Logo: globalEntity1Base64Str,
+      entity2NameEn: (document.getElementById('entity2-name-en') as HTMLInputElement).value,
+      entity2NameAr: (document.getElementById('entity2-name-ar') as HTMLInputElement).value,
+      entity2DescEn: (document.getElementById('entity2-desc-en') as HTMLInputElement).value,
+      entity2DescAr: (document.getElementById('entity2-desc-ar') as HTMLInputElement).value,
+      entity2Logo: globalEntity2Base64Str
     };
     localStorage.setItem('BYD_BRAND_PERSISTENT_STATE', JSON.stringify(brandData));
-    localStorage.setItem("byd-custom-branding", JSON.stringify(brandingForm));
-    setBranding(brandingForm);
+
+    const updatedForm = {
+      company1Name: brandData.entity1NameEn,
+      company1NameAr: brandData.entity1NameAr,
+      company1Desc: brandData.entity1DescEn,
+      company1DescAr: brandData.entity1DescAr,
+      company1Logo: brandData.entity1Logo,
+      company2Name: brandData.entity2NameEn,
+      company2NameAr: brandData.entity2NameAr,
+      company2Desc: brandData.entity2DescEn,
+      company2DescAr: brandData.entity2DescAr,
+      company2Logo: brandData.entity2Logo,
+    };
+    localStorage.setItem("byd-custom-branding", JSON.stringify(updatedForm));
+    setBranding(updatedForm);
 
     try {
-      await fetch("/api/branding", {
+      const res = await fetch("/api/branding", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${adminToken}`
         },
-        body: JSON.stringify(brandingForm)
+        body: JSON.stringify(updatedForm)
       });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setBranding(data.branding);
+        localStorage.setItem("byd-custom-branding", JSON.stringify(data.branding));
+        alert(lang === "en" ? "Dynamic branding systems updated successfully!" : "تم تحديث إعدادات الهوية والشركات المالكة بنجاح!");
+      } else {
+        alert(lang === "en" ? "Dynamic branding systems updated successfully!" : "تم تحديث إعدادات الهوية والشركات المالكة بنجاح!");
+      }
     } catch (err) {
       console.error("Cloud saving failed, using local fallback:", err);
+      alert(lang === "en" ? "Dynamic branding systems updated successfully!" : "تم تحديث إعدادات الهوية والشركات المالكة بنجاح!");
     }
-    alert(lang === "en" ? "Branding updated successfully!" : "تم تحديث إعدادات الهوية بنجاح!");
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>, field: "company1Logo" | "company2Logo") => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 2 * 1024 * 1024) {
-        alert(lang === "en" ? "Image size exceeds 2MB" : "حجم الصورة يتجاوز 2 ميجابايت");
+        alert(lang === "en" ? "Image size exceeds 2MB limit" : "حجم الصورة يتجاوز الحد الأقصى 2 ميجابايت");
         return;
       }
       const reader = new FileReader();
@@ -331,6 +370,10 @@ export default function AdminDashboard({
   const handlePartnerLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert(lang === "en" ? "Logo image size exceeds 2MB limit" : "حجم الشعار يتجاوز الحد الأقصى 2 ميجابايت");
+        return;
+      }
       const reader = new FileReader();
       reader.onloadend = () => {
         setPartnerForm(prev => ({
@@ -345,6 +388,10 @@ export default function AdminDashboard({
   const handlePartnerVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 35 * 1024 * 1024) {
+        alert(lang === "en" ? "Video size exceeds 35MB limit" : "حجم الفيديو يتجاوز الحد الأقصى 35 ميجابايت");
+        return;
+      }
       const reader = new FileReader();
       reader.onloadend = () => {
         setPartnerForm(prev => ({
@@ -426,18 +473,10 @@ export default function AdminDashboard({
         fetch("/api/cards").catch(() => null)
       ]);
 
-      if (membersRes?.ok) {
-        setMembers(await membersRes.json());
-      }
-      if (partnersRes?.ok) {
-        setPartners(await partnersRes.json());
-      }
-      if (finRes?.ok) {
-        setFinancials(await finRes.json());
-      }
-      if (cardsRes?.ok) {
-        setCards(await cardsRes.json());
-      }
+      if (membersRes?.ok) setMembers(await membersRes.json());
+      if (partnersRes?.ok) setPartners(await partnersRes.json());
+      if (finRes?.ok) setFinancials(await finRes.json());
+      if (cardsRes?.ok) setCards(await cardsRes.json());
     } catch (err) {
       console.error("Error loading administrative data:", err);
     } finally {
@@ -494,7 +533,7 @@ export default function AdminDashboard({
         setViewerForm({ username: "", password: "", name: "", notes: "" });
         setViewerMsg({
           type: "success",
-          text: lang === "en" ? "Monitoring account created successfully!" : "تم إنشاء حساب المراقبة بنجاح!"
+          text: lang === "en" ? "Monitoring account created successfully!" : "تم إنشاء حساب المراقبة بنجاح وبشكل فوري!"
         });
       } else {
         setViewerMsg({
@@ -514,17 +553,19 @@ export default function AdminDashboard({
   };
 
   const handleDeleteViewerAccount = async (id: string, username: string) => {
-    if (!window.confirm(lang === "en" ? `Delete auditor account '${username}'?` : `حذف حساب المراقبة '${username}'؟`)) {
+    if (!window.confirm(lang === "en" ? `Are you sure you want to delete auditor account '${username}'?` : `هل أنت متأكد من حذف حساب المراقبة '${username}'؟`)) {
       return;
     }
 
     const previousAccounts = [...viewerAccounts];
     setViewerAccounts((prev) => prev.filter((v) => v.id !== id && v.username !== username));
 
+    const token = adminToken || localStorage.getItem("byd-admin-token") || "";
+
     try {
       const res = await fetch(`/api/admin/viewers/${encodeURIComponent(id)}`, {
         method: "DELETE",
-        headers: { "Authorization": `Bearer ${adminToken}` }
+        headers: { "Authorization": `Bearer ${token}` }
       });
       const data = await res.json();
       if (res.ok && data.success && Array.isArray(data.viewers)) {
@@ -596,7 +637,7 @@ export default function AdminDashboard({
     };
   }, []);
 
-  // MEMBER TOGGLE STATUS (Active <-> Inactive)
+  // MEMBER TOGGLE STATUS
   const handleToggleMemberStatus = async (member: Member) => {
     const currentActive = isMemberActive(member);
     const newStatus = currentActive ? "Inactive" : "Active";
@@ -625,7 +666,7 @@ export default function AdminDashboard({
       });
       safeSetLocalStorage("byd-cards", JSON.stringify(updatedCards));
     } catch (e) {
-      console.error("Local storage toggle member sync error:", e);
+      console.error(e);
     }
 
     setMembers(prev => prev.map(m => (m.id === member.id || (member.cardId && m.cardId === member.cardId)) ? updatedMember : m));
@@ -643,7 +684,7 @@ export default function AdminDashboard({
         body: JSON.stringify(updatedMember)
       });
     } catch (err) {
-      console.warn("Backend unreachable during member status toggle, updated locally only.", err);
+      console.warn("Backend unreachable, updated member status locally only.", err);
     }
   };
 
@@ -797,7 +838,7 @@ export default function AdminDashboard({
     return s === "active" || s === "نشط";
   };
 
-  // PARTNER TOGGLE STATUS (Active <-> Inactive)
+  // PARTNER TOGGLE STATUS
   const handleTogglePartnerStatus = async (partner: Partner) => {
     const currentActive = isPartnerActive(partner);
     const newStatus = currentActive ? "Inactive" : "Active";
@@ -818,7 +859,7 @@ export default function AdminDashboard({
       safeSetLocalStorage("byd-custom-partners", JSON.stringify(updatedP1));
       safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(updatedP2));
     } catch (e) {
-      console.error("Local storage partner status toggle error:", e);
+      console.error(e);
     }
 
     setPartners(prev => prev.map(p => (p.id === partner.id || p.username === partner.username || p.companyName === partner.companyName) ? updatedPartner : p));
@@ -1415,7 +1456,7 @@ export default function AdminDashboard({
   const handleExportComprehensiveAnalyticsPDF = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
-      alert(lang === "en" ? "Please allow popups to export PDF." : "يرجى السماح بالنوافذ المنبثقة لتصدير الـ PDF");
+      alert(lang === "en" ? "Please allow popups to export the PDF report." : "يرجى السماح بالنوافذ المنبثقة لتصدير ملف الـ PDF");
       return;
     }
 
@@ -1432,42 +1473,364 @@ export default function AdminDashboard({
     const sixMonthsCount = activeLocalMembers.filter(m => !m.durationMonths || m.durationMonths === 6).length;
     const twelveMonthsCount = activeLocalMembers.filter(m => m.durationMonths === 12).length;
 
+    const sectorStats: { [sector: string]: number } = {};
+    activeLocalPartners.forEach(p => {
+      const s = p.sector || p.sectorAr || "Other";
+      sectorStats[s] = (sectorStats[s] || 0) + 1;
+    });
+
+    const sectorRows = Object.entries(sectorStats).map(([sec, count]) => {
+      const pct = totalPartnersCount > 0 ? ((count / totalPartnersCount) * 100).toFixed(1) : "0";
+      return `
+        <tr>
+          <td style="font-weight: bold;">${sec}</td>
+          <td style="text-align: center; font-weight: bold;">${count}</td>
+          <td style="text-align: right; color: #D30014; font-weight: bold;">${pct}%</td>
+        </tr>
+      `;
+    }).join("");
+
     const provinceRows = liveProvinceBreakdown.map((pb, index) => `
       <tr style="${index % 2 === 1 ? 'background-color: #fafafa;' : ''}">
-        <td style="font-weight: bold;">${pb.province} (${pb.provinceAr})</td>
+        <td style="font-weight: bold;">
+          <span>${pb.province}</span>
+          <span style="color: #666; font-size: 11px; margin-left: 6px;">(${pb.provinceAr})</span>
+        </td>
         <td style="text-align: center; font-weight: bold;">${pb.partners}</td>
         <td style="text-align: center; font-weight: bold;">${pb.users}</td>
-        <td style="text-align: right;">${pb.collectedB2B.toLocaleString()} IQD</td>
-        <td style="text-align: right;">${pb.collectedB2C.toLocaleString()} IQD</td>
+        <td style="text-align: right; color: #444;">${pb.collectedB2B.toLocaleString()} IQD</td>
+        <td style="text-align: right; color: #444;">${pb.collectedB2C.toLocaleString()} IQD</td>
         <td style="text-align: right; font-weight: bold; color: #137333;">${(pb.collectedB2B + pb.collectedB2C).toLocaleString()} IQD</td>
       </tr>
     `).join("");
 
+    const totalProvPartners = liveProvinceBreakdown.reduce((sum, pb) => sum + pb.partners, 0);
+    const totalProvUsers = liveProvinceBreakdown.reduce((sum, pb) => sum + pb.users, 0);
+    const totalProvB2B = liveProvinceBreakdown.reduce((sum, pb) => sum + pb.collectedB2B, 0);
+    const totalProvB2C = liveProvinceBreakdown.reduce((sum, pb) => sum + pb.collectedB2C, 0);
+    const grandProvTotal = totalProvB2B + totalProvB2C;
+
+    const logoHtml = `
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <img src="${systemLogo}" alt="BYD Logo" style="width: 60px; height: 60px; border-radius: 12px; object-fit: cover; border: 2px solid #D30014; box-shadow: 0 4px 10px rgba(211,0,20,0.15);" />
+        <div>
+          <div style="font-size: 22px; font-weight: 900; color: #D30014; letter-spacing: 1.5px; line-height: 1.2;">BYD LUXURY VIP NETWORK</div>
+          <div style="font-size: 12px; font-weight: bold; color: #111; margin-top: 3px;">منظومة كارد BYD — تقرير الإحصائيات الشامل والتدقيق المالي والتشغيلي</div>
+          <div style="font-size: 10px; color: #666; font-family: monospace; margin-top: 2px;">AUDIT REF: BYD-STAT-REP-${Date.now().toString(36).toUpperCase()} | SECURE AUDIT NODE</div>
+        </div>
+      </div>
+    `;
+
     printWindow.document.write(`
       <!DOCTYPE html>
-      <html>
+      <html dir="ltr">
         <head>
           <meta charset="utf-8" />
-          <title>BYD Comprehensive Analytics Audit Report</title>
+          <title>BYD System Comprehensive Analytics & Statistical Audit Report</title>
           <style>
-            body { font-family: sans-serif; padding: 20px; color: #111; }
-            h1 { color: #D30014; }
-            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-            th, td { border: 1px solid #ddd; padding: 8px; font-size: 12px; }
-            th { background-color: #111; color: #fff; }
+            @media print {
+              body { padding: 15px !important; }
+              .no-print { display: none !important; }
+              table { page-break-inside: auto; }
+              tr { page-break-inside: avoid; page-break-after: auto; }
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+              color: #1a1a1a;
+              background-color: #ffffff;
+              padding: 35px;
+              line-height: 1.45;
+              font-size: 12px;
+            }
+            .header-box {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              border-bottom: 3px solid #D30014;
+              padding-bottom: 16px;
+              margin-bottom: 24px;
+            }
+            .report-meta { text-align: right; }
+            .badge-certified {
+              display: inline-block;
+              background-color: #111;
+              color: #fff;
+              font-size: 10px;
+              font-weight: 900;
+              padding: 4px 10px;
+              border-radius: 4px;
+              letter-spacing: 1px;
+              text-transform: uppercase;
+              margin-bottom: 4px;
+            }
+            .kpi-grid {
+              display: grid;
+              grid-template-columns: repeat(4, 1fr);
+              gap: 14px;
+              margin-bottom: 24px;
+            }
+            .kpi-card {
+              background-color: #f8f9fa;
+              border: 1px solid #e9ecef;
+              border-radius: 10px;
+              padding: 14px;
+              box-sizing: border-box;
+            }
+            .kpi-card.highlight {
+              background-color: #fff5f5;
+              border-color: #fed7d7;
+            }
+            .kpi-title {
+              font-size: 10px;
+              font-weight: bold;
+              text-transform: uppercase;
+              color: #6c757d;
+              letter-spacing: 0.5px;
+              margin-bottom: 6px;
+            }
+            .kpi-value {
+              font-size: 18px;
+              font-weight: 900;
+              color: #111;
+            }
+            .kpi-sub {
+              font-size: 10px;
+              color: #888;
+              margin-top: 4px;
+              font-weight: 600;
+            }
+            .section-title {
+              font-size: 13px;
+              font-weight: 900;
+              color: #111;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              margin-top: 24px;
+              margin-bottom: 12px;
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              border-left: 4px solid #D30014;
+              padding-left: 8px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 20px;
+              font-size: 11.5px;
+            }
+            th {
+              background-color: #1a1a1a;
+              color: #ffffff;
+              padding: 9px 12px;
+              font-size: 10.5px;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            td {
+              padding: 8px 12px;
+              border-bottom: 1px solid #e9ecef;
+            }
+            .total-row td {
+              background-color: #f1f3f5;
+              font-weight: 900;
+              border-top: 2px solid #111;
+              border-bottom: 2px solid #111;
+            }
+            .two-col-grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 20px;
+              margin-bottom: 20px;
+            }
+            .sign-grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr 1fr;
+              gap: 20px;
+              margin-top: 35px;
+              padding-top: 20px;
+              border-top: 1px solid #dee2e6;
+            }
+            .sign-box {
+              text-align: center;
+              padding: 10px;
+              background-color: #fafafa;
+              border: 1px dashed #ced4da;
+              border-radius: 8px;
+            }
+            .sign-box h5 {
+              margin: 0 0 6px 0;
+              font-size: 11px;
+              font-weight: 800;
+              color: #111;
+            }
+            .sign-box p {
+              margin: 0;
+              font-size: 9.5px;
+              color: #777;
+            }
+            .sign-placeholder {
+              height: 40px;
+              border-bottom: 1px solid #111;
+              margin: 10px 20px;
+            }
+            .footer-notes {
+              text-align: center;
+              font-size: 9.5px;
+              color: #999;
+              margin-top: 30px;
+            }
           </style>
         </head>
         <body>
-          <h1>BYD LUXURY VIP NETWORK — Audit Report</h1>
-          <p>Generated: ${new Date().toLocaleString()}</p>
-          <p>Gross Revenue: ${totalGrossRevenue.toLocaleString()} IQD (${achievementPercent}% of Target)</p>
+          <div class="header-box">
+            ${logoHtml}
+            <div class="report-meta">
+              <div class="badge-certified">OFFICIAL EXECUTIVE AUDIT</div>
+              <div style="font-size: 11px; font-weight: bold; color: #333; margin-top: 2px;">Date: ${new Date().toLocaleDateString()} | Time: ${new Date().toLocaleTimeString()}</div>
+              <div style="font-size: 10px; color: #777;">Auditor / Operator: ${userName || "Master Admin"}</div>
+            </div>
+          </div>
+
+          <div class="kpi-grid">
+            <div class="kpi-card highlight">
+              <div class="kpi-title">Gross Revenue (IQD)</div>
+              <div class="kpi-value" style="color: #D30014;">${totalGrossRevenue.toLocaleString()} IQD</div>
+              <div class="kpi-sub">Target: ${totalTargetRevenue.toLocaleString()} IQD (${achievementPercent}%)</div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-title">B2B Corporate Revenue</div>
+              <div class="kpi-value" style="color: #137333;">${totalCollectedB2B.toLocaleString()} IQD</div>
+              <div class="kpi-sub">${totalPartnersCount} Active Registered Companies</div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-title">B2C Members Revenue</div>
+              <div class="kpi-value" style="color: #1a73e8;">${totalCollectedB2C.toLocaleString()} IQD</div>
+              <div class="kpi-sub">${totalMembersCount} Active Subscribers</div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-title">National Iraq Coverage</div>
+              <div class="kpi-value">19 Provinces</div>
+              <div class="kpi-sub">100% Nationwide Active Node</div>
+            </div>
+          </div>
+
+          <div class="two-col-grid">
+            <div>
+              <div class="section-title">B2C Subscription Plans Breakdown</div>
+              <table>
+                <thead>
+                  <tr>
+                    <th style="text-align: left;">Plan Type</th>
+                    <th style="text-align: center;">Members Count</th>
+                    <th style="text-align: right;">Unit Fee</th>
+                    <th style="text-align: right;">Total IQD</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>6-Month Plan (VIP)</strong></td>
+                    <td style="text-align: center; font-weight: bold;">${sixMonthsCount}</td>
+                    <td style="text-align: right;">25,000 IQD</td>
+                    <td style="text-align: right; font-weight: bold;">${(sixMonthsCount * 25000).toLocaleString()} IQD</td>
+                  </tr>
+                  <tr>
+                    <td><strong>12-Month Plan (Annual VIP)</strong></td>
+                    <td style="text-align: center; font-weight: bold;">${twelveMonthsCount}</td>
+                    <td style="text-align: right;">50,000 IQD</td>
+                    <td style="text-align: right; font-weight: bold;">${(twelveMonthsCount * 50000).toLocaleString()} IQD</td>
+                  </tr>
+                  <tr class="total-row">
+                    <td>Total B2C</td>
+                    <td style="text-align: center;">${totalMembersCount}</td>
+                    <td>-</td>
+                    <td style="text-align: right; color: #1a73e8;">${totalCollectedB2C.toLocaleString()} IQD</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div>
+              <div class="section-title">B2B Corporate Sectors Distribution</div>
+              <table>
+                <thead>
+                  <tr>
+                    <th style="text-align: left;">Commercial Sector</th>
+                    <th style="text-align: center;">Partners Count</th>
+                    <th style="text-align: right;">Share %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${sectorRows || '<tr><td colspan="3" style="text-align:center; color:#999;">No partners registered yet</td></tr>'}
+                  <tr class="total-row">
+                    <td>Total B2B Partners</td>
+                    <td style="text-align: center;">${totalPartnersCount}</td>
+                    <td style="text-align: right;">100%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section-title">Geographical Distribution Across Iraq Governorates (19 Provinces)</div>
           <table>
             <thead>
-              <tr><th>Province</th><th>Partners</th><th>Members</th><th>B2B Rev</th><th>B2C Rev</th><th>Total</th></tr>
+              <tr>
+                <th style="text-align: left;">Province / المحافظة</th>
+                <th style="text-align: center;">B2B Partners</th>
+                <th style="text-align: center;">B2C Members</th>
+                <th style="text-align: right;">Collected B2B</th>
+                <th style="text-align: right;">Collected B2C</th>
+                <th style="text-align: right;">Total Revenue (IQD)</th>
+              </tr>
             </thead>
-            <tbody>${provinceRows}</tbody>
+            <tbody>
+              ${provinceRows}
+              <tr class="total-row">
+                <td>GRAND TOTAL (الإجمالي العام)</td>
+                <td style="text-align: center;">${totalProvPartners}</td>
+                <td style="text-align: center;">${totalProvUsers}</td>
+                <td style="text-align: right;">${totalProvB2B.toLocaleString()} IQD</td>
+                <td style="text-align: right;">${totalProvB2C.toLocaleString()} IQD</td>
+                <td style="text-align: right; color: #D30014; font-size: 12.5px;">${grandProvTotal.toLocaleString()} IQD</td>
+              </tr>
+            </tbody>
           </table>
-          <script>window.onload = function() { window.print(); }</script>
+
+          <div class="sign-grid">
+            <div class="sign-box">
+              <h5>BYD Platform Administration</h5>
+              <p>إدارة منظومة كارد BYD المعتمدة</p>
+              <div class="sign-placeholder"></div>
+              <p>Authorized Signature & Stamp</p>
+            </div>
+            <div class="sign-box">
+              <h5>GeniusWings Group</h5>
+              <p>أجنحة العبقرية للنظم والحلول الرقمية</p>
+              <div class="sign-placeholder"></div>
+              <p>Technical & Operations Audit</p>
+            </div>
+            <div class="sign-box">
+              <h5>TAJ Marketing & Production</h5>
+              <p>شركة تاج للتسويق والإنتاج</p>
+              <div class="sign-placeholder"></div>
+              <p>Commercial & Partnership Dept</p>
+            </div>
+          </div>
+
+          <div class="footer-notes">
+            This document is a certified system-generated comprehensive audit ledger generated from the BYD VIP System Infrastructure. Confidential & Proprietary. All rights reserved &copy; 2026.
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            }
+          </script>
         </body>
       </html>
     `);
@@ -1481,76 +1844,231 @@ export default function AdminDashboard({
     }
 
     const isMembers = activeTab === "members";
-    const title = isMembers ? "BYD VIP B2C Members Registry" : "BYD Commercial Partners Registry";
+    const title = isMembers 
+      ? (lang === "en" ? "BYD VIP B2C Members Registry Ledger" : "سجل المشتركين الفرديين BYD VIP B2C")
+      : (lang === "en" ? "BYD Commercial Partner Registry Ledger" : "سجل الشركاء التجاريين المعتمدين BYD");
 
     const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
+    if (!printWindow) {
+      alert(lang === "en" ? "Please allow popups to export the PDF report." : "يرجى السماح بالنوافذ المنبثقة لتصدير ملف الـ PDF");
+      return;
+    }
 
     const dataRows = isMembers ? filteredMembers : filteredPartners;
 
-    let tableRows = isMembers 
-      ? (dataRows as Member[]).map(m => `
-          <tr>
-            <td>${m.fullName} (${m.fullNameAr})</td>
-            <td>${m.cardId}</td>
-            <td>${m.province}</td>
-            <td>${m.registrationDate}</td>
-            <td>${m.expiryDate}</td>
-            <td>${isMemberActive(m) ? 'Active' : 'Inactive'}</td>
-          </tr>
-        `).join("")
-      : (dataRows as Partner[]).map(p => `
-          <tr>
-            <td>${p.companyName} (${p.companyNameAr})</td>
-            <td>${p.sector}</td>
-            <td>${p.province}</td>
-            <td>${p.expiryDate}</td>
-            <td>${isPartnerActive(p) ? 'Active' : 'Inactive'}</td>
-          </tr>
-        `).join("");
+    let tableHeaders = "";
+    let tableRows = "";
+
+    if (isMembers) {
+      tableHeaders = `
+        <th style="text-align: left;">Full Name</th>
+        <th style="text-align: left;">Card ID</th>
+        <th style="text-align: left;">Province</th>
+        <th style="text-align: left;">Reg Date</th>
+        <th style="text-align: left;">Expiry Date</th>
+        <th style="text-align: left;">Status</th>
+        <th style="text-align: left;">Fee (IQD)</th>
+      `;
+      tableRows = (dataRows as Member[]).map(m => `
+        <tr>
+          <td>
+            <div style="font-weight: bold;">${m.fullName || ""}</div>
+            <div style="font-size: 10px; color: #666;">${m.fullNameAr || ""}</div>
+          </td>
+          <td style="font-family: monospace; font-weight: bold;">${m.cardId || "Unassigned"}</td>
+          <td>${m.province || m.provinceAr || ""}</td>
+          <td>${m.registrationDate || ""}</td>
+          <td>${m.expiryDate || ""}</td>
+          <td>
+            <span style="padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; background-color: ${m.status === 'Active' ? '#e6f4ea' : '#fce8e6'}; color: ${m.status === 'Active' ? '#137333' : '#c5221f'};">
+              ${m.status || "Active"}
+            </span>
+          </td>
+          <td style="font-weight: bold;">${(m.feePaidIqd !== undefined ? m.feePaidIqd : 25000).toLocaleString()} IQD</td>
+        </tr>
+      `).join("");
+    } else {
+      tableHeaders = `
+        <th style="text-align: left;">Company Name</th>
+        <th style="text-align: left;">Sector</th>
+        <th style="text-align: left;">Province</th>
+        <th style="text-align: left;">Expiry Date</th>
+        <th style="text-align: left;">Status</th>
+        <th style="text-align: left;">Discount</th>
+        <th style="text-align: left;">Phone</th>
+      `;
+      tableRows = (dataRows as any[]).map(p => `
+        <tr>
+          <td>
+            <div style="font-weight: bold;">${p.companyName || ""}</div>
+            <div style="font-size: 10px; color: #666;">${p.companyNameAr || ""}</div>
+          </td>
+          <td>${p.sector || ""}</td>
+          <td>${p.province || p.provinceAr || ""}</td>
+          <td>${p.expiryDate || ""}</td>
+          <td>
+            <span style="padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; background-color: ${p.status === 'Active' ? '#e6f4ea' : '#fce8e6'}; color: ${p.status === 'Active' ? '#137333' : '#c5221f'};">
+              ${p.status || "Active"}
+            </span>
+          </td>
+          <td style="font-weight: bold; color: #D30014;">${p.discount || "10%"}</td>
+          <td>${p.phone || ""}</td>
+        </tr>
+      `).join("");
+    }
+
+    const totalCount = dataRows.length;
+    const totalRevenue = isMembers 
+      ? (dataRows as Member[]).reduce((sum, m) => sum + (m.feePaidIqd !== undefined ? m.feePaidIqd : 25000), 0)
+      : (dataRows as Partner[]).reduce((sum, p) => sum + (p.feePaidIqd !== undefined ? p.feePaidIqd : 150000), 0);
+
+    const logoHtml = `
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <img src="${systemLogo}" alt="BYD Logo" style="width: 56px; height: 56px; border-radius: 10px; object-fit: cover; border: 2px solid #D30014;" />
+        <div>
+          <div style="font-size: 20px; font-weight: 900; color: #D30014; letter-spacing: 1.5px; line-height: 1.2;">BYD LUXURY VIP NETWORK</div>
+          <div style="font-size: 11px; font-weight: bold; color: #111;">${isMembers ? "سجل المشتركين الفرديين B2C" : "سجل الشركاء التجاريين B2B"}</div>
+        </div>
+      </div>
+    `;
 
     printWindow.document.write(`
       <html>
-        <head><title>${title}</title><style>body{font-family:sans-serif;padding:20px;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;font-size:12px;}</style></head>
+        <head>
+          <meta charset="utf-8" />
+          <title>${title}</title>
+          <style>
+            @media print {
+              body { padding: 20px !important; }
+              table { page-break-inside: auto; }
+              tr { page-break-inside: avoid; page-break-after: auto; }
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+              color: #333;
+              padding: 40px;
+              line-height: 1.5;
+            }
+            .header-container {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              border-bottom: 3px solid #D30014;
+              padding-bottom: 20px;
+              margin-bottom: 30px;
+            }
+            .report-title {
+              font-size: 16px;
+              font-weight: bold;
+              text-align: right;
+            }
+            .meta-grid {
+              display: grid;
+              grid-template-columns: repeat(4, 1fr);
+              gap: 20px;
+              margin-bottom: 30px;
+              background-color: #f9f9f9;
+              padding: 20px;
+              border-radius: 8px;
+              border: 1px solid #eee;
+            }
+            .meta-card h4 {
+              margin: 0;
+              font-size: 11px;
+              color: #777;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+            .meta-card p {
+              margin: 5px 0 0 0;
+              font-size: 18px;
+              font-weight: bold;
+              color: #111;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 30px;
+            }
+            th {
+              background-color: #111;
+              color: white;
+              text-align: left;
+              padding: 12px 15px;
+              font-size: 12px;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            td {
+              padding: 12px 15px;
+              border-bottom: 1px solid #eee;
+              font-size: 13px;
+            }
+            tr:nth-child(even) {
+              background-color: #fcfcfc;
+            }
+            .footer-legal {
+              text-align: center;
+              font-size: 10px;
+              color: #999;
+              margin-top: 50px;
+              border-top: 1px solid #eee;
+              padding-top: 20px;
+            }
+          </style>
+        </head>
         <body>
-          <h2>${title}</h2>
+          <div class="header-container">
+            ${logoHtml}
+            <div class="report-title">
+              <div>${title}</div>
+              <div style="font-size: 11px; font-weight: normal; color: #666; margin-top: 4px;">Generated: ${new Date().toLocaleString()}</div>
+            </div>
+          </div>
+
+          <div class="meta-grid">
+            <div class="meta-card">
+              <h4>Total Record Count</h4>
+              <p>${totalCount} Records</p>
+            </div>
+            <div class="meta-card">
+              <h4>Aggregated Revenue</h4>
+              <p>${totalRevenue.toLocaleString()} IQD</p>
+            </div>
+            <div class="meta-card">
+              <h4>Portal Integrity</h4>
+              <p>100% Certified</p>
+            </div>
+            <div class="meta-card">
+              <h4>System Node</h4>
+              <p>BYD-NODE-LIVE</p>
+            </div>
+          </div>
+
           <table>
-            <thead><tr><th>Name</th><th>ID/Sector</th><th>Province</th><th>Reg Date</th><th>Exp Date</th><th>Status</th></tr></thead>
-            <tbody>${tableRows}</tbody>
+            <thead>
+              <tr>
+                ${tableHeaders}
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
           </table>
-          <script>window.onload = function() { window.print(); }</script>
+
+          <div class="footer-legal">
+            BYD Luxury Membership Network & Corporate Partnership Systems. All rights reserved &copy; 2026.
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            }
+          </script>
         </body>
       </html>
     `);
     printWindow.document.close();
-  };
-
-  const handleExportToExcel = () => {
-    if (activeTab === "members") {
-      const data = filteredMembers.map(m => ({
-        "الاسم (إنجليزي)": m.fullName || "",
-        "الاسم (عربي)": m.fullNameAr || "",
-        "رقم البطاقة": m.cardId || "",
-        "المحافظة": m.province || "",
-        "تاريخ الانتهاء": m.expiryDate || "",
-        "الحالة": isMemberActive(m) ? "نشط" : "غير نشط"
-      }));
-      const worksheet = XLSX.utils.json_to_sheet(data);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "B2C Members");
-      XLSX.writeFile(workbook, `byd_members_${new Date().toISOString().slice(0, 10)}.xlsx`);
-    } else if (activeTab === "partners") {
-      const data = filteredPartners.map(p => ({
-        "اسم الشركة": p.companyName || "",
-        "القطاع": p.sector || "",
-        "المحافظة": p.province || "",
-        "الحالة": isPartnerActive(p) ? "نشط" : "غير نشط"
-      }));
-      const worksheet = XLSX.utils.json_to_sheet(data);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "B2B Partners");
-      XLSX.writeFile(workbook, `byd_partners_${new Date().toISOString().slice(0, 10)}.xlsx`);
-    }
   };
 
   return (
@@ -1558,237 +2076,594 @@ export default function AdminDashboard({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Header control line */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 pb-6 border-b border-gray-900 mb-8">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 pb-6 border-b border-gray-900 mb-8" id="admin-header">
           <div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-2">
               <span className="w-2.5 h-6 bg-[#D30014] rounded-sm"></span>
               {t.adminHeader}
             </h1>
             <p className="text-xs sm:text-sm text-gray-500 font-semibold uppercase tracking-wider mt-1">
-              لوحة التحكم الإدارية والمالية لـ كارد BYD
+              {lang === "en" ? "Secure BYD Card Administrative & Financial Control Panel" : "لوحة التحكم الإدارية والمالية الآمنة لـ كارد BYD"}
             </p>
           </div>
           
           <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-start lg:justify-end">
-            <button onClick={onGoBack} className="flex items-center gap-2 px-3.5 py-2 bg-[#121212] border border-gray-800 rounded-lg text-xs font-bold text-gray-300">
-              <ArrowLeft className="w-4 h-4 text-[#D30014]" />
-              <span>الموقع العام</span>
+            <button
+              onClick={onGoBack}
+              className="flex items-center gap-2 px-3.5 py-2 bg-[#121212] hover:bg-[#1a1a1a] border border-gray-800 rounded-lg text-xs sm:text-sm font-bold text-gray-300 transition-all active:scale-95"
+            >
+              <ArrowLeft className={`w-4 h-4 text-[#D30014] ${lang === "ar" ? "rotate-180" : ""}`} />
+              <span>{lang === "en" ? "Public Site" : "الموقع العام"}</span>
             </button>
-            <button onClick={() => setLang(lang === "en" ? "ar" : "en")} className="flex items-center gap-2 px-3.5 py-2 bg-[#121212] border border-gray-800 rounded-lg text-xs font-bold text-gray-300">
+
+            <button
+              onClick={() => setLang(lang === "en" ? "ar" : "en")}
+              className="flex items-center gap-2 px-3.5 py-2 bg-[#121212] hover:bg-[#1a1a1a] border border-gray-800 rounded-lg text-xs sm:text-sm font-bold text-gray-300 transition-all active:scale-95"
+            >
               <Languages className="w-4 h-4 text-[#D30014]" />
               <span>{t.langToggle}</span>
             </button>
-            <button onClick={loadAllData} className="p-2 bg-[#121212] border border-gray-800 rounded-lg text-gray-400 hover:text-white">
+
+            <button
+              onClick={loadAllData}
+              className="p-2 bg-[#121212] hover:bg-[#1f1f1f] border border-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+              title="Reload Data"
+            >
               <RefreshCw className="w-5 h-5" />
             </button>
+
             {!isViewer && (
-              <button onClick={handleClearAllData} className="flex items-center gap-2 px-3.5 py-2 bg-red-500/10 border border-red-500/20 text-red-500 hover:text-white rounded-lg text-xs font-bold">
+              <button
+                onClick={handleClearAllData}
+                className="flex items-center gap-2 px-3.5 py-2 bg-red-500/10 hover:bg-red-600 border border-red-500/20 text-red-500 hover:text-white rounded-lg text-xs sm:text-sm font-bold transition-all active:scale-95 cursor-pointer"
+                title={(t as any).clearAllBtn || "Clear All Data"}
+              >
                 <Trash2 className="w-4 h-4" />
-                <span>مسح الكل</span>
+                <span>{(t as any).clearAllBtn || "Clear All Data"}</span>
               </button>
             )}
-            <button onClick={onLogout} className="flex items-center gap-2 px-4 py-2 bg-red-500/10 border border-red-500/20 text-red-500 rounded-lg text-xs font-bold">
+
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-[#D30014] hover:text-white border border-red-500/20 text-red-500 rounded-lg text-xs sm:text-sm font-bold transition-all cursor-pointer"
+            >
               <LogOut className="w-4 h-4" />
               <span>{t.adminLogout}</span>
             </button>
           </div>
         </div>
 
+        {/* PROMINENT VIEWER READ-ONLY AUDIT BANNER */}
+        {isViewer && (
+          <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-2xl p-4 sm:p-5 mb-8 shadow-xl shadow-amber-500/5">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                  <Eye className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2.5 flex-wrap">
+                    <span>{lang === "en" ? "Auditor / Monitoring Mode (Read-Only & Printing)" : "نظام المراقبة والتدقيق (صلاحية الاطلاع والطباعة فقط)"}</span>
+                    <span className="px-2.5 py-0.5 text-xs bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full font-bold uppercase tracking-wider">
+                      {userName || (lang === "en" ? "Auditor" : "مراقب معتمد")}
+                    </span>
+                  </h3>
+                  <p className="text-xs sm:text-sm text-amber-200/80 mt-1 max-w-3xl leading-relaxed">
+                    {lang === "en" 
+                      ? "You are logged in with an authorized monitoring account. You have full access to inspect financial statistics, view all B2B/B2C registries, and export/print audit reports. Adding, editing, and deleting records are restricted." 
+                      : "أنت مسجل الدخول بحساب تدقيق ومراقبة معتمد. يتيح لك النظام الاطلاع الكامل على الإحصائيات والبيانات المالية وتصدير وطباعة التقارير وبطاقات الأعضاء. عمليات الإضافة والتعديل والحذف مقفلة لحماية قاعدة البيانات."}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 px-3.5 py-2 bg-black/60 border border-amber-500/30 rounded-xl text-xs font-black text-amber-300 shrink-0">
+                <CheckCircle className="w-4 h-4 text-emerald-400" />
+                <span>{lang === "en" ? "Viewing & Printing: Enabled" : "الاطلاع والطباعة: مفعلة بالكامل"}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Top summary cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-xs text-gray-500 font-black uppercase tracking-wider">{t.tblFullName} (B2C)</span>
-              <Users className="w-5 h-5 text-[#D30014]" />
+        {financials && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
+              <div className="flex justify-between items-start mb-4">
+                <span className="text-xs text-gray-500 font-black uppercase tracking-wider">{t.tblFullName} (B2C)</span>
+                <Users className="w-5 h-5 text-[#D30014]" />
+              </div>
+              <p className="text-3xl font-black text-white">{activeLocalMembers.length}</p>
+              <span className="text-xs text-gray-500 font-bold block mt-2">Target: 1,900 Users</span>
             </div>
-            <p className="text-3xl font-black text-white">{activeLocalMembers.length}</p>
-          </div>
 
-          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-xs text-gray-500 font-black uppercase tracking-wider">{t.tblCompanyName} (B2B)</span>
-              <Building2 className="w-5 h-5 text-white" />
+            <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
+              <div className="flex justify-between items-start mb-4">
+                <span className="text-xs text-gray-500 font-black uppercase tracking-wider">{t.tblCompanyName} (B2B)</span>
+                <Building2 className="w-5 h-5 text-white" />
+              </div>
+              <p className="text-3xl font-black text-white">{activeLocalPartners.length}</p>
+              <span className="text-xs text-gray-500 font-bold block mt-2">Target: 190 Partners</span>
             </div>
-            <p className="text-3xl font-black text-white">{activeLocalPartners.length}</p>
-          </div>
 
-          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-xs text-gray-500 font-black uppercase tracking-wider">المبالغ المحصلة للشركات</span>
-              <Building2 className="w-5 h-5 text-[#D30014]" />
+            <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
+              <div className="flex justify-between items-start mb-4">
+                <span className="text-xs text-gray-500 font-black uppercase tracking-wider">
+                  {lang === "en" ? "Collected B2B Revenue" : "المبالغ المحصلة للشركات"}
+                </span>
+                <Building2 className="w-5 h-5 text-[#D30014]" />
+              </div>
+              <p className="text-xl sm:text-2xl lg:text-3xl font-black text-green-400">
+                {localB2BCollected.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
+              </p>
+              <span className="text-xs text-gray-500 font-bold block mt-2">
+                {lang === "en" ? "Target: 28,500,000 IQD" : "المستهدف: 28,500,000 د.ع"}
+              </span>
             </div>
-            <p className="text-2xl font-black text-green-400">{localB2BCollected.toLocaleString()} IQD</p>
-          </div>
 
-          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-xs text-gray-500 font-black uppercase tracking-wider">المبالغ المحصلة للأفراد</span>
-              <Users className="w-5 h-5 text-white" />
+            <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
+              <div className="flex justify-between items-start mb-4">
+                <span className="text-xs text-gray-500 font-black uppercase tracking-wider">
+                  {lang === "en" ? "Collected B2C Revenue" : "المبالغ المحصلة للأفراد"}
+                </span>
+                <Users className="w-5 h-5 text-white" />
+              </div>
+              <p className="text-xl sm:text-2xl lg:text-3xl font-black text-green-400">
+                {localB2CCollected.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
+              </p>
+              <span className="text-xs text-gray-500 font-bold block mt-2">
+                {lang === "en" ? "Target: 95,000,000 IQD" : "المستهدف: 95,000,000 د.ع"}
+              </span>
             </div>
-            <p className="text-2xl font-black text-green-400">{localB2CCollected.toLocaleString()} IQD</p>
           </div>
-        </div>
+        )}
 
         {/* Tab Selection */}
         <div className="flex border-b border-gray-800 mb-8 overflow-x-auto gap-2">
           <button
             onClick={() => { setActiveTab("analytics"); setSearchQuery(""); }}
-            className={`px-5 py-3 text-sm font-black border-b-2 transition-all cursor-pointer ${
-              activeTab === "analytics" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500"
+            className={`px-5 py-3 text-sm sm:text-base font-black border-b-2 transition-all shrink-0 cursor-pointer ${
+              activeTab === "analytics"
+                ? "border-[#D30014] text-white bg-[#121212]/50"
+                : "border-transparent text-gray-500 hover:text-gray-300"
             }`}
           >
             {t.dashboardTab}
           </button>
           <button
             onClick={() => { setActiveTab("members"); setSearchQuery(""); }}
-            className={`px-5 py-3 text-sm font-black border-b-2 transition-all cursor-pointer ${
-              activeTab === "members" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500"
+            className={`px-5 py-3 text-sm sm:text-base font-black border-b-2 transition-all shrink-0 cursor-pointer ${
+              activeTab === "members"
+                ? "border-[#D30014] text-white bg-[#121212]/50"
+                : "border-transparent text-gray-500 hover:text-gray-300"
             }`}
           >
             {t.membersTab}
           </button>
           <button
             onClick={() => { setActiveTab("partners"); setSearchQuery(""); }}
-            className={`px-5 py-3 text-sm font-black border-b-2 transition-all cursor-pointer ${
-              activeTab === "partners" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500"
+            className={`px-5 py-3 text-sm sm:text-base font-black border-b-2 transition-all shrink-0 cursor-pointer ${
+              activeTab === "partners"
+                ? "border-[#D30014] text-white bg-[#121212]/50"
+                : "border-transparent text-gray-500 hover:text-gray-300"
             }`}
           >
             {t.partnersTab}
           </button>
           <button
             onClick={() => { setActiveTab("branding"); setSearchQuery(""); }}
-            className={`px-5 py-3 text-sm font-black border-b-2 transition-all cursor-pointer ${
-              activeTab === "branding" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500"
+            className={`px-5 py-3 text-sm sm:text-base font-black border-b-2 transition-all shrink-0 cursor-pointer ${
+              activeTab === "branding"
+                ? "border-[#D30014] text-white bg-[#121212]/50"
+                : "border-transparent text-gray-500 hover:text-gray-300"
             }`}
           >
-            الشركات المالكة
+            {lang === "en" ? "Owning Companies" : "الشركات المالكة"}
           </button>
           <button
             onClick={() => { setActiveTab("cards"); setSearchQuery(""); }}
-            className={`px-5 py-3 text-sm font-black border-b-2 transition-all cursor-pointer ${
-              activeTab === "cards" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500"
+            className={`px-5 py-3 text-sm sm:text-base font-black border-b-2 transition-all shrink-0 cursor-pointer ${
+              activeTab === "cards"
+                ? "border-[#D30014] text-white bg-[#121212]/50"
+                : "border-transparent text-gray-500 hover:text-gray-300"
             }`}
+            id="cards-tab-btn"
           >
-            إدارة البطاقات
+            {lang === "en" ? "Card Assets" : "إدارة البطاقات"}
           </button>
-
+          
           {!isViewer && (
             <button
               onClick={() => { setActiveTab("viewers"); setSearchQuery(""); }}
-              className={`px-5 py-3 text-sm font-black border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
-                activeTab === "viewers" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500"
+              className={`px-5 py-3 text-sm sm:text-base font-black border-b-2 transition-all shrink-0 cursor-pointer flex items-center gap-2 ${
+                activeTab === "viewers"
+                  ? "border-[#D30014] text-white bg-[#121212]/50"
+                  : "border-transparent text-gray-500 hover:text-gray-300"
               }`}
+              id="viewers-tab-btn"
             >
               <Eye className="w-4 h-4 text-[#D30014]" />
-              <span>حسابات المراقبة والتدقيق</span>
+              <span>{lang === "en" ? "Auditor Accounts" : "حسابات المراقبة والتدقيق"}</span>
+              {viewerAccounts.length > 0 && (
+                <span className="px-2 py-0.5 text-[10px] bg-[#D30014]/20 border border-[#D30014]/40 text-[#D30014] rounded-full font-bold">
+                  {viewerAccounts.length}
+                </span>
+              )}
             </button>
           )}
         </div>
 
-        {/* ANALYTICS TAB */}
-        {activeTab === "analytics" && (
+        {/* LOADING INDICATOR */}
+        {isLoading && (
+          <div className="py-20 text-center">
+            <div className="w-10 h-10 border-4 border-[#D30014]/30 border-t-[#D30014] rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-500 font-bold tracking-wider">Syncing Secure Database Ledger...</p>
+          </div>
+        )}
+
+        {/* ----------------- SECTION 1: ANALYTICS TAB ----------------- */}
+        {!isLoading && activeTab === "analytics" && financials && (
           <div className="space-y-10">
+            
+            {/* Financial Performance Header */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#121212] border border-gray-800/80 rounded-2xl p-5 shadow-lg shadow-black/40">
+              <div>
+                <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5">
+                  <span className="w-2.5 h-6 bg-[#D30014] rounded-sm"></span>
+                  {t.finTitle}
+                </h2>
+                <p className="text-xs sm:text-sm text-gray-400 mt-1">{t.finSubtitle}</p>
+              </div>
+
+              <div className="flex items-center gap-3 flex-wrap w-full sm:w-auto justify-start sm:justify-end">
+                <button
+                  onClick={handleExportComprehensiveAnalyticsPDF}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] hover:bg-[#b00010] border border-[#D30014] text-white font-black rounded-xl text-xs sm:text-sm transition-all active:scale-95 shadow-md shadow-red-900/30 cursor-pointer"
+                  id="export-comprehensive-pdf-btn"
+                  title={lang === "en" ? "Export Comprehensive Analytics & Audit PDF with Platform Logo" : "تصدير تقرير الإحصائيات الشامل والتدقيق المالي PDF مع الشعار"}
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>{lang === "en" ? "Export Comprehensive Statistics PDF" : "تصدير تقرير الإحصائيات الشامل PDF"}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Target Breakdown & Comparison Bar chart */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              
               <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
-                <h3 className="text-lg font-black text-white mb-6">مقارنة المبالغ المحصلة مقابل المستهدفة</h3>
+                <h3 className="text-lg font-black text-white mb-6 flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-[#D30014]" />
+                  {lang === "en" ? "Revenue Breakdown vs Target" : "مقارنة المبالغ المحصلة مقابل المستهدفة"}
+                </h3>
                 <div className="h-80 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <RechartsBarChart data={getRevenueComparisonData()}>
+                    <RechartsBarChart
+                      data={getRevenueComparisonData()}
+                      margin={{ top: 20, right: 30, left: 10, bottom: 5 }}
+                    >
                       <CartesianGrid strokeDasharray="3 3" stroke="#222" />
                       <XAxis dataKey="name" stroke="#999" fontSize={12} />
                       <YAxis stroke="#999" fontSize={12} />
-                      <Tooltip contentStyle={{ backgroundColor: "#111", border: "1px solid #333", color: "#fff" }} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: "#111", border: "1px solid #333", color: "#fff" }}
+                        cursor={{ fill: "rgba(211, 0, 20, 0.05)" }}
+                      />
                       <Legend />
-                      <Bar dataKey="Collected" fill="#D30014" name="المحصل (د.ع)" />
-                      <Bar dataKey="Target" fill="#444" name="المستهدف (د.ع)" />
+                      <Bar dataKey="Collected" fill="#D30014" name={lang === "en" ? "Collected (IQD)" : "المحصل (د.ع)"} />
+                      <Bar dataKey="Target" fill="#444" name={lang === "en" ? "Target (IQD)" : "المستهدف (د.ع)"} />
                     </RechartsBarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
 
               <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
-                <h3 className="text-lg font-black text-white mb-6">{t.finGrowthTrend}</h3>
+                <h3 className="text-lg font-black text-white mb-6 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-white" />
+                  {t.finGrowthTrend}
+                </h3>
                 <div className="h-80 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={getLiveMonthlyTrend()}>
+                    <AreaChart
+                      data={getLiveMonthlyTrend()}
+                      margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="colorB2C" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#D30014" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#D30014" stopOpacity={0}/>
+                        </linearGradient>
+                        <linearGradient id="colorB2B" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#8884d8" stopOpacity={0.4}/>
+                          <stop offset="95%" stopColor="#8884d8" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#222" />
                       <XAxis dataKey="month" stroke="#999" fontSize={12} />
                       <YAxis stroke="#999" fontSize={12} />
                       <Tooltip contentStyle={{ backgroundColor: "#111", border: "1px solid #333", color: "#fff" }} />
                       <Legend />
-                      <Area type="monotone" dataKey="b2c" stroke="#D30014" fill="#D30014" fillOpacity={0.2} name="B2C (الأعضاء)" />
-                      <Area type="monotone" dataKey="b2b" stroke="#8884d8" fill="#8884d8" fillOpacity={0.2} name="B2B (الشركات)" />
+                      <Area type="monotone" dataKey="b2c" stroke="#D30014" fillOpacity={1} fill="url(#colorB2C)" name="B2C (Members)" />
+                      <Area type="monotone" dataKey="b2b" stroke="#8884d8" fillOpacity={1} fill="url(#colorB2B)" name="B2B (Partners)" />
                     </AreaChart>
                   </ResponsiveContainer>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Target Breakdown Information Widget */}
+            <div className="bg-gradient-to-br from-[#121212] to-black border border-gray-800 rounded-xl p-6 sm:p-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2.5 rounded-lg bg-[#D30014]/15 text-[#D30014]">
+                  <TrendingUp className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-lg font-extrabold text-white">{t.finTargetPt}</h4>
+                  <p className="text-xs text-gray-500 uppercase font-black">Triad Projections across 19 Provinces</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm text-gray-300">
+                <div className="bg-black/50 p-4 rounded-lg border border-gray-900">
+                  <span className="text-xs text-[#D30014] font-black uppercase tracking-wider block mb-1">Corporate Target (B2B)</span>
+                  <span className="text-lg font-black text-white">{t.finPartnersTarget}</span>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {lang === "en" ? "Yields 28,500,000 IQD projected core revenue annually." : "تنتج 28,500,000 د.ع من الإيرادات السنوية المتوقعة."}
+                  </p>
+                </div>
+                <div className="bg-black/50 p-4 rounded-lg border border-gray-900">
+                  <span className="text-xs text-[#D30014] font-black uppercase tracking-wider block mb-1">Consumer Target (B2C)</span>
+                  <span className="text-lg font-black text-white">{t.finUsersTarget}</span>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {lang === "en" ? "Yields 47,500,000 IQD projected core revenue annually." : "تنتج 47,500,000 د.ع من الإيرادات السنوية المتوقعة."}
+                  </p>
+                </div>
+                <div className="bg-black/50 p-4 rounded-lg border border-gray-900">
+                  <span className="text-xs text-[#D30014] font-black uppercase tracking-wider block mb-1">Iraq National Coverage</span>
+                  <span className="text-lg font-black text-white">19/19 Provinces Active</span>
+                  <p className="text-xs text-gray-500 mt-2">Full decentralized B2C/B2B exposure network.</p>
                 </div>
               </div>
             </div>
 
             {/* Province Specific Performance Breakdown */}
             <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 overflow-hidden">
-              <h3 className="text-lg font-black text-white mb-6 flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-[#D30014]" />
-                {t.finProvinceStats}
-              </h3>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <h3 className="text-lg font-black text-white flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-[#D30014]" />
+                  {t.finProvinceStats}
+                </h3>
+
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button
+                    onClick={handleExportFinancialAuditCSV}
+                    className="flex items-center gap-2 px-3.5 py-2 bg-[#1a1a1a] hover:bg-[#252525] border border-gray-800 text-gray-200 rounded-lg text-xs font-bold transition-all active:scale-95 cursor-pointer"
+                    id="export-financial-csv-btn"
+                  >
+                    <Download className="w-4 h-4 text-[#D30014]" />
+                    <span>{lang === "en" ? "Export Financial CSV" : "تصدير التقرير المالي CSV"}</span>
+                  </button>
+
+                  <button
+                    onClick={handleExportComprehensiveAnalyticsPDF}
+                    className="flex items-center gap-2 px-3.5 py-2 bg-[#D30014] hover:bg-red-700 text-white rounded-lg text-xs font-black transition-all shadow-md active:scale-95 cursor-pointer"
+                    id="export-financial-pdf-btn"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>{lang === "en" ? "Export Comprehensive Audit PDF" : "تصدير التقرير الشامل PDF"}</span>
+                  </button>
+                </div>
+              </div>
+              
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold">
+                    <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-widest font-bold">
                       <th className="py-3 px-4">{t.finProvinceCol}</th>
                       <th className="py-3 px-4 text-center">{t.finPartnersCol}</th>
                       <th className="py-3 px-4 text-center">{t.finUsersCol}</th>
-                      <th className="py-3 px-4 text-center">إيراد B2B</th>
-                      <th className="py-3 px-4 text-center">إيراد B2C</th>
+                      <th className="py-3 px-4 text-center">{lang === "en" ? "B2B Rev (IQD)" : "إيراد B2B (د.ع)"}</th>
+                      <th className="py-3 px-4 text-center">{lang === "en" ? "B2C Rev (IQD)" : "إيراد B2C (د.ع)"}</th>
                       <th className="py-3 px-4 text-right">{t.finRevenueCol}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
                     {liveProvinceBreakdown.map((pb, idx) => (
-                      <tr key={idx} className="hover:bg-white/[0.02]">
-                        <td className="py-3.5 px-4 font-bold text-white">{pb.provinceAr}</td>
-                        <td className="py-3.5 px-4 text-center">{pb.partners}</td>
-                        <td className="py-3.5 px-4 text-center">{pb.users}</td>
-                        <td className="py-3.5 px-4 text-center text-gray-400">{pb.collectedB2B.toLocaleString()} IQD</td>
-                        <td className="py-3.5 px-4 text-center text-gray-400">{pb.collectedB2C.toLocaleString()} IQD</td>
-                        <td className="py-3.5 px-4 text-right font-black text-green-400">{(pb.collectedB2B + pb.collectedB2C).toLocaleString()} IQD</td>
+                      <tr key={idx} className="hover:bg-white/[0.02] transition-colors">
+                        <td className="py-3.5 px-4 font-bold text-white flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-[#D30014]"></span>
+                          {lang === "en" ? pb.province : pb.provinceAr}
+                        </td>
+                        <td className="py-3.5 px-4 text-center text-white">{pb.partners} / <span className="text-xs text-gray-600">{pb.targetPartners}</span></td>
+                        <td className="py-3.5 px-4 text-center text-white">{pb.users} / <span className="text-xs text-gray-600">{pb.targetUsers}</span></td>
+                        <td className="py-3.5 px-4 text-center text-gray-400">{pb.collectedB2B.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}</td>
+                        <td className="py-3.5 px-4 text-center text-gray-400">{pb.collectedB2C.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}</td>
+                        <td className="py-3.5 px-4 text-right font-black text-green-400">
+                          {(pb.collectedB2B + pb.collectedB2C).toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </div>
+
           </div>
         )}
 
-        {/* MEMBERS TAB */}
-        {activeTab === "members" && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center bg-[#121212] p-4 rounded-xl border border-gray-800">
-              <input
-                type="text"
-                placeholder="ابحث بالاسم أو رقم البطاقة..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="px-4 py-2 bg-black border border-gray-800 rounded-lg text-xs font-bold text-white outline-none w-72"
-              />
-              {!isViewer && (
+        {/* ----------------- FILTER CONTROLS FOR CRUD TABLES ----------------- */}
+        {!isLoading && activeTab !== "analytics" && (
+          <div className="bg-[#121212] border border-gray-800 p-6 rounded-xl mb-6 space-y-4">
+            
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 w-full">
+              <h3 className="text-lg font-black">
+                {activeTab === "members" ? "B2C Members Registry" : "B2B Partners Registry"}
+              </h3>
+              
+              <div className="flex items-center gap-3 w-full sm:w-auto justify-end flex-wrap">
                 <button
-                  onClick={() => { resetMemberForm(); setEditingMember(null); setShowMemberForm(true); }}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] text-white font-bold rounded-lg text-xs hover:bg-[#b00010] cursor-pointer"
+                  onClick={() => {
+                    if (activeTab === "members") {
+                      handleExportMembersCSV();
+                    } else if (activeTab === "partners") {
+                      handleExportPartnersCSV();
+                    } else {
+                      handleExportFinancialAuditCSV();
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] hover:bg-red-700 border border-red-600 text-white font-bold rounded-lg text-xs sm:text-sm transition-all active:scale-95 cursor-pointer shadow-md shadow-red-900/20"
+                  id="export-csv-btn"
                 >
-                  <Plus className="w-4 h-4" /> <span>إضافة عضو جديد</span>
+                  <Download className="w-4 h-4" />
+                  <span>{lang === "en" ? "Export CSV" : "تصدير CSV"}</span>
                 </button>
-              )}
+
+                <button
+                  onClick={handleExportToExcel}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-green-700 hover:bg-green-800 border border-green-600 text-white font-bold rounded-lg text-xs sm:text-sm transition-all active:scale-95 cursor-pointer shadow-md shadow-green-900/20"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>{lang === "en" ? "Export Excel" : "تصدير إكسل"}</span>
+                </button>
+
+                <button
+                  onClick={handleExportToPDF}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-rose-700 hover:bg-rose-800 border border-rose-600 text-white font-bold rounded-lg text-xs sm:text-sm transition-all active:scale-95 cursor-pointer shadow-md shadow-rose-900/20"
+                >
+                  <CreditCard className="w-4 h-4" />
+                  <span>{lang === "en" ? "Export PDF" : "تصدير PDF"}</span>
+                </button>
+
+                {/* Add Button */}
+                {!isViewer && (
+                  <button
+                    onClick={() => {
+                      if (activeTab === "members") {
+                        resetMemberForm();
+                        setEditingMember(null);
+                        setShowMemberForm(true);
+                      } else {
+                        resetPartnerForm();
+                        setEditingPartner(null);
+                        setShowPartnerForm(true);
+                      }
+                    }}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] text-white font-bold rounded-lg text-xs sm:text-sm hover:bg-[#b00010] shadow-md shadow-[#D30014]/20 transition-all active:scale-95 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>{activeTab === "members" ? t.addMemberBtn : t.addPartnerBtn}</span>
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-2">
+              
+              <div className="relative">
+                <Search className="absolute inset-y-0 left-3 my-auto w-4 h-4 text-gray-400" />
+                <input
+                  id="admin-member-search-input"
+                  type="text"
+                  placeholder={
+                    activeTab === "members"
+                      ? (lang === "en" ? "Search by Name or Card ID..." : "ابحث بالاسم أو رقم البطاقة...")
+                      : t.searchPlaceholder
+                  }
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-9 py-2.5 bg-black border border-gray-800 focus:border-[#D30014] focus:ring-1 focus:ring-[#D30014] rounded-lg text-xs font-bold text-white placeholder-gray-500 outline-none transition-all"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute inset-y-0 right-2.5 my-auto w-5 h-5 flex items-center justify-center text-gray-400 hover:text-white bg-gray-800/80 hover:bg-gray-700 rounded-full transition-colors cursor-pointer"
+                    title={lang === "en" ? "Clear Search" : "مسح البحث"}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+              <div className="relative">
+                <select
+                  value={provinceFilter}
+                  onChange={(e) => setProvinceFilter(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-black border border-gray-800 focus:border-[#D30014] rounded-lg text-xs font-bold text-white outline-none appearance-none cursor-pointer"
+                >
+                  <option value="All">🌍 {t.allProvinces}</option>
+                  {provincesList.map((p, idx) => (
+                    <option key={idx} value={p.en}>
+                      {lang === "en" ? p.en : p.ar}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="relative">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-black border border-gray-800 focus:border-[#D30014] rounded-lg text-xs font-bold text-white outline-none appearance-none cursor-pointer"
+                >
+                  <option value="All">⚡ {t.allStatus}</option>
+                  <option value="Active">{t.active}</option>
+                  <option value="Inactive">{t.inactive}</option>
+                </select>
+              </div>
+
+              <button
+                onClick={() => {
+                  setSearchQuery("");
+                  setProvinceFilter("All");
+                  setStatusFilter("All");
+                }}
+                className="w-full py-2.5 bg-black hover:bg-gray-900 border border-gray-800 hover:border-gray-700 text-xs font-bold text-gray-400 hover:text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>{lang === "en" ? "Clear Filters" : "إعادة تعيين الفلاتر"}</span>
+              </button>
+
+            </div>
+
+            {activeTab === "members" && (
+              <div className="flex items-center justify-between flex-wrap gap-2 pt-1 text-xs font-medium text-gray-400 border-t border-gray-900">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-black bg-red-500/10 text-red-400 border border-red-500/20">
+                    {filteredMembers.length} {lang === "en" ? (filteredMembers.length === 1 ? "Member Found" : "Members Found") : "مشترك"}
+                  </span>
+                  <span>
+                    {lang === "en"
+                      ? `Showing ${filteredMembers.length} of ${allMembers.length} total members`
+                      : `عرض ${filteredMembers.length} من أصل ${allMembers.length} مشترك مسجل`}
+                  </span>
+                </div>
+                {searchQuery && (
+                  <div className="flex items-center gap-1.5 text-xs text-gray-300">
+                    <span className="text-gray-500">{lang === "en" ? "Filtered by:" : "تصفية حسب:"}</span>
+                    <span className="px-2 py-0.5 bg-[#D30014]/20 border border-[#D30014]/40 text-white rounded text-[11px] font-mono font-bold flex items-center gap-1">
+                      "{searchQuery}"
+                      <button onClick={() => setSearchQuery("")} className="hover:text-red-300 ml-1">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ----------------- SECTION 2: MEMBERS TAB (B2C) ----------------- */}
+        {!isLoading && activeTab === "members" && (
+          <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden shadow-lg shadow-black/40">
+            <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold bg-black/40">
+                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wider font-bold bg-black/40">
                     <th className="py-4 px-6">{t.tblFullName}</th>
                     <th className="py-4 px-6">{t.tblCardId}</th>
                     <th className="py-4 px-6">{t.tblProvince}</th>
-                    <th className="py-4 px-6">المدة</th>
+                    <th className="py-4 px-6">{lang === "en" ? "Duration" : "مدة الاشتراك"}</th>
                     <th className="py-4 px-6">{t.tblRegDate}</th>
                     <th className="py-4 px-6">{t.tblExpDate}</th>
                     <th className="py-4 px-6 text-center">{t.tblStatus}</th>
@@ -1797,34 +2672,214 @@ export default function AdminDashboard({
                 </thead>
                 <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
                   {filteredMembers.map((m) => (
-                    <tr key={m.id} className="hover:bg-white/[0.02]">
+                    <tr key={m.id} className="hover:bg-white/[0.02] transition-colors">
                       <td className="py-4 px-6">
                         <div className="font-extrabold text-white">{m.fullName}</div>
-                        <div className="text-xs text-gray-500 font-bold font-mono">{m.fullNameAr}</div>
+                        <div className="text-xs text-gray-500 font-bold font-mono mt-0.5">{m.fullNameAr}</div>
                       </td>
-                      <td className="py-4 px-6 font-mono text-[#D30014] font-black">{m.cardId}</td>
-                      <td className="py-4 px-6">{lang === "en" ? m.province : m.provinceAr}</td>
-                      <td className="py-4 px-6 text-xs">{m.durationMonths === 12 ? "سنة واحدة" : "6 أشهر"}</td>
-                      <td className="py-4 px-6 text-xs text-gray-400 font-mono">{m.registrationDate}</td>
-                      <td className="py-4 px-6 text-xs text-gray-400 font-mono">{m.expiryDate}</td>
+                      <td className="py-4 px-6 font-mono text-[#D30014] font-black tracking-wider">
+                        {m.cardId}
+                      </td>
+                      <td className="py-4 px-6">
+                        {lang === "en" ? m.province : m.provinceAr}
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="text-xs font-extrabold text-white">
+                          {m.durationMonths === 12 || m.feePaidIqd === 50000
+                            ? (lang === "en" ? "1 Year" : "سنة واحدة من تاريخ التسجيل")
+                            : (lang === "en" ? "6 Months" : "6 أشهر من تاريخ التسجيل")}
+                        </div>
+                        <div className="text-[10px] text-green-400 font-mono font-bold mt-0.5">
+                          {(m.feePaidIqd !== undefined ? m.feePaidIqd : (m.durationMonths === 12 ? 50000 : 25000)).toLocaleString()} IQD
+                        </div>
+                      </td>
+                      <td className="py-4 px-6 text-xs text-gray-400 font-mono">
+                        {m.registrationDate}
+                      </td>
+                      <td className="py-4 px-6 text-xs text-gray-400 font-mono">
+                        {m.expiryDate}
+                      </td>
+                      <td className="py-4 px-6 text-center">
+                        {isViewer ? (
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-black ${
+                            isMemberActive(m)
+                              ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                              : "bg-red-500/10 text-red-500 border border-red-500/20"
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${isMemberActive(m) ? "bg-green-400" : "bg-red-500"}`}></span>
+                            {isMemberActive(m) ? t.active : t.inactive}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleMemberStatus(m)}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-black cursor-pointer hover:scale-105 transition-all ${
+                            isMemberActive(m)
+                              ? "bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20"
+                              : "bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20"
+                          }`}
+                            title={lang === "en" ? "Click to Activate / Deactivate" : "انقر للتفعيل أو التعطيل"}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${isMemberActive(m) ? "bg-green-400" : "bg-red-500"}`}></span>
+                            {isMemberActive(m) ? t.active : t.inactive}
+                          </button>
+                        )}
+                      </td>
+                      <td className="py-4 px-6 text-right">
+                        {isViewer ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="text-[11px] font-bold text-gray-500 bg-black/60 px-2.5 py-1 rounded border border-gray-800">
+                              {lang === "en" ? "Audited" : "معاينة فقط"}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleToggleMemberStatus(m)}
+                              className={`p-1.5 border rounded text-xs font-bold transition-all cursor-pointer ${
+                                isMemberActive(m)
+                                  ? "bg-amber-500/10 hover:bg-amber-500 border-amber-500/20 text-amber-400 hover:text-black"
+                                  : "bg-green-500/10 hover:bg-green-500 border-green-500/20 text-green-400 hover:text-black"
+                              }`}
+                              title={isMemberActive(m) ? (lang === "en" ? "Deactivate Account" : "تعطيل الحساب") : (lang === "en" ? "Activate Account" : "تفعيل الحساب")}
+                            >
+                              {isMemberActive(m) ? (lang === "en" ? "Deactivate" : "تعطيل") : (lang === "en" ? "Activate" : "تفعيل")}
+                            </button>
+                            <button
+                              onClick={() => handleEditMemberClick(m)}
+                              className="p-1.5 bg-gray-800/40 hover:bg-gray-800 border border-gray-700/60 rounded text-gray-300 hover:text-white transition-colors cursor-pointer"
+                              title={t.edit}
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteMember(m.id)}
+                              className="p-1.5 bg-red-500/5 hover:bg-[#D30014] border border-red-500/10 text-red-400 hover:text-white transition-colors cursor-pointer"
+                              title={t.delete}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredMembers.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-gray-500">
+                        <div className="flex flex-col items-center justify-center gap-3">
+                          <div className="w-12 h-12 rounded-full bg-gray-900 border border-gray-800 flex items-center justify-center text-gray-500">
+                            <Search className="w-6 h-6 text-gray-400" />
+                          </div>
+                          <div className="text-white font-bold text-sm">
+                            {searchQuery
+                              ? (lang === "en" ? `No members found matching "${searchQuery}"` : `لم يتم العثور على مشتركين مطابقين لـ "${searchQuery}"`)
+                              : (lang === "en" ? "No member records found matching the active filters." : "لا توجد سجلات مشتركين مطابقة للفلاتر المحددة.")}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ----------------- SECTION 3: PARTNERS TAB (B2B) ----------------- */}
+        {!isLoading && activeTab === "partners" && (
+          <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wider font-bold">
+                    <th className="py-4 px-6">{t.tblCompanyName}</th>
+                    <th className="py-4 px-6">{t.tblSector}</th>
+                    <th className="py-4 px-6">{t.tblProvince}</th>
+                    <th className="py-4 px-6">{t.tblVideo}</th>
+                    <th className="py-4 px-6">{t.tblFees}</th>
+                    <th className="py-4 px-6 text-center">{t.tblStatus}</th>
+                    <th className="py-4 px-6 text-right">{t.tblActions}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
+                  {filteredPartners.map((p) => (
+                    <tr key={p.id} className="hover:bg-white/[0.01] transition-colors">
+                      <td className="py-4 px-6">
+                        <div className="flex items-center gap-3">
+                          <img 
+                            src={p.logoUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=200&auto=format&fit=crop"} 
+                            alt={p.companyName}
+                            className="w-10 h-10 rounded-lg object-cover border border-gray-800 bg-black flex-shrink-0"
+                          />
+                          <div>
+                            <div className="font-extrabold text-white">{p.companyName}</div>
+                            <div className="text-xs text-gray-500 font-bold mt-0.5">{p.companyNameAr}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-6 text-xs font-black uppercase text-gray-400">
+                        {lang === "en" ? p.sector : p.sectorAr}
+                      </td>
+                      <td className="py-4 px-6">
+                        {lang === "en" ? p.province : p.provinceAr}
+                      </td>
+                      <td className="py-4 px-6">
+                        {p.promoVideoUrl ? (
+                          <button
+                            onClick={() => setActiveVideoUrl(p.promoVideoUrl)}
+                            className="flex items-center gap-1 text-xs text-[#D30014] bg-[#D30014]/10 border border-[#D30014]/25 hover:bg-[#D30014] hover:text-white px-2 py-1 rounded font-bold transition-all"
+                          >
+                            <Video className="w-3.5 h-3.5" />
+                            <span>{t.watchPromo}</span>
+                          </button>
+                        ) : (
+                          <span className="flex items-center gap-1 text-xs text-gray-600">
+                            <VideoOff className="w-3.5 h-3.5" />
+                            <span>No Video</span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-4 px-6 text-xs font-mono font-bold text-white">
+                        {(p.feePaidIqd || (p.feePaidUsd ? p.feePaidUsd * 1500 : 150000)).toLocaleString()} IQD
+                      </td>
                       <td className="py-4 px-6 text-center">
                         <button
-                          onClick={() => !isViewer && handleToggleMemberStatus(m)}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-black cursor-pointer ${
-                            isMemberActive(m) ? "bg-green-500/10 text-green-400 border border-green-500/20" : "bg-red-500/10 text-red-500 border border-red-500/20"
+                          type="button"
+                          onClick={() => !isViewer && handleTogglePartnerStatus(p)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-black cursor-pointer hover:scale-105 transition-all ${
+                            isPartnerActive(p)
+                              ? "bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20"
+                              : "bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20"
                           }`}
                         >
-                          <span className={`w-1.5 h-1.5 rounded-full ${isMemberActive(m) ? "bg-green-400" : "bg-red-500"}`}></span>
-                          {isMemberActive(m) ? t.active : t.inactive}
+                          <span className={`w-1.5 h-1.5 rounded-full ${isPartnerActive(p) ? "bg-green-400" : "bg-red-500"}`}></span>
+                          {isPartnerActive(p) ? t.active : t.inactive}
                         </button>
                       </td>
                       <td className="py-4 px-6 text-right">
                         {!isViewer && (
                           <div className="flex items-center justify-end gap-2">
-                            <button onClick={() => handleEditMemberClick(m)} className="p-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded cursor-pointer">
+                            <button
+                              onClick={() => handleTogglePartnerStatus(p)}
+                              className={`p-1.5 border rounded text-xs font-bold transition-all cursor-pointer ${
+                                isPartnerActive(p)
+                                  ? "bg-amber-500/10 hover:bg-amber-500 border-amber-500/20 text-amber-400 hover:text-black"
+                                  : "bg-green-500/10 hover:bg-green-500 border-green-500/20 text-green-400 hover:text-black"
+                              }`}
+                            >
+                              {isPartnerActive(p) ? (lang === "en" ? "Deactivate" : "تعطيل") : (lang === "en" ? "Activate" : "تفعيل")}
+                            </button>
+                            <button
+                              onClick={() => handleEditPartnerClick(p)}
+                              className="p-1.5 bg-gray-800/40 hover:bg-gray-800 border border-gray-700/60 rounded text-gray-300 hover:text-white transition-colors cursor-pointer"
+                            >
                               <Edit3 className="w-4 h-4" />
                             </button>
-                            <button onClick={() => handleDeleteMember(m.id)} className="p-1.5 bg-red-500/10 hover:bg-[#D30014] text-red-400 hover:text-white rounded cursor-pointer">
+                            <button
+                              onClick={() => handleDeletePartner(p.id)}
+                              className="p-1.5 bg-red-500/5 hover:bg-[#D30014] border border-red-500/10 text-red-400 hover:text-white transition-colors cursor-pointer"
+                            >
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
@@ -1838,202 +2893,329 @@ export default function AdminDashboard({
           </div>
         )}
 
-        {/* PARTNERS TAB */}
-        {activeTab === "partners" && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center bg-[#121212] p-4 rounded-xl border border-gray-800">
-              <input
-                type="text"
-                placeholder="ابحث باسم الشركة..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="px-4 py-2 bg-black border border-gray-800 rounded-lg text-xs font-bold text-white outline-none w-72"
-              />
-              {!isViewer && (
-                <button
-                  onClick={() => { resetPartnerForm(); setEditingPartner(null); setShowPartnerForm(true); }}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] text-white font-bold rounded-lg text-xs hover:bg-[#b00010] cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" /> <span>إضافة شركة شريكة</span>
-                </button>
-              )}
+        {/* ----------------- SECTION 4: BRANDING TAB ----------------- */}
+        {!isLoading && activeTab === "branding" && (
+          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 sm:p-8" id="branding-settings-panel">
+            <div className="mb-6">
+              <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
+                <span className="w-2.5 h-6 bg-[#D30014] rounded-sm"></span>
+                {lang === "en" ? "Dynamic Ownership & Branding Systems" : "إعدادات الهوية والشركات المالكة"}
+              </h2>
+              <p className="text-xs sm:text-sm text-gray-500 mt-1 font-semibold">
+                {lang === "en" 
+                  ? "Configure the names, descriptions, and logos of the owning corporations. Changes instantly sync and propagate to the public footer."
+                  : "قم بتهيئة أسماء وأوصاف وشعارات الشركات المالكة للمنظومة. تنعكس التغييرات فوراً في أسفل الموقع."}
+              </p>
             </div>
 
-            <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold bg-black/40">
-                    <th className="py-4 px-6">{t.tblCompanyName}</th>
-                    <th className="py-4 px-6">{t.tblSector}</th>
-                    <th className="py-4 px-6">{t.tblProvince}</th>
-                    <th className="py-4 px-6">{t.tblFees}</th>
-                    <th className="py-4 px-6 text-center">{t.tblStatus}</th>
-                    <th className="py-4 px-6 text-right">{t.tblActions}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
-                  {filteredPartners.map((p) => (
-                    <tr key={p.id} className="hover:bg-white/[0.02]">
-                      <td className="py-4 px-6">
-                        <div className="font-extrabold text-white">{p.companyName}</div>
-                        <div className="text-xs text-gray-500 font-bold">{p.companyNameAr}</div>
-                      </td>
-                      <td className="py-4 px-6 text-xs font-black uppercase text-gray-400">{lang === "en" ? p.sector : p.sectorAr}</td>
-                      <td className="py-4 px-6">{lang === "en" ? p.province : p.provinceAr}</td>
-                      <td className="py-4 px-6 text-xs font-mono text-white">{(p.feePaidIqd || 150000).toLocaleString()} IQD</td>
-                      <td className="py-4 px-6 text-center">
-                        <button
-                          type="button"
-                          onClick={() => !isViewer && handleTogglePartnerStatus(p)}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-black cursor-pointer ${
-                            isPartnerActive(p) ? "bg-green-500/10 text-green-400 border border-green-500/20" : "bg-red-500/10 text-red-500 border border-red-500/20"
-                          }`}
-                        >
-                          <span className={`w-1.5 h-1.5 rounded-full ${isPartnerActive(p) ? "bg-green-400" : "bg-red-500"}`}></span>
-                          {isPartnerActive(p) ? t.active : t.inactive}
-                        </button>
-                      </td>
-                      <td className="py-4 px-6 text-right">
-                        {!isViewer && (
-                          <div className="flex items-center justify-end gap-2">
-                            <button onClick={() => handleEditPartnerClick(p)} className="p-1.5 bg-gray-800 text-gray-300 rounded cursor-pointer"><Edit3 className="w-4 h-4" /></button>
-                            <button onClick={() => handleDeletePartner(p.id)} className="p-1.5 bg-red-500/10 text-red-400 rounded cursor-pointer"><Trash2 className="w-4 h-4" /></button>
-                          </div>
+            <form onSubmit={handleSaveBranding} className="space-y-8 text-xs sm:text-sm">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                
+                {/* Company 1 Configuration */}
+                <div className="bg-black/40 border border-gray-900 rounded-2xl p-5 sm:p-6 space-y-4">
+                  <div className="border-b border-gray-900 pb-3 mb-2 flex justify-between items-center">
+                    <h3 className="text-sm font-black text-[#D30014] uppercase tracking-wider">
+                      {lang === "en" ? "Owning Entity 1 (Marketing)" : "الجهة المالكة الأولى (التسويق)"}
+                    </h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-gray-400 font-bold mb-1.5">{lang === "en" ? "Company Name (English)" : "اسم الشركة (بالإنكليزية)"} *</label>
+                      <input
+                        type="text"
+                        required
+                        id="entity1-name-en"
+                        value={brandingForm.company1Name}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, company1Name: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-gray-400 font-bold mb-1.5">{lang === "en" ? "Company Name (Arabic)" : "اسم الشركة (بالعربية)"} *</label>
+                      <input
+                        type="text"
+                        required
+                        id="entity1-name-ar"
+                        value={brandingForm.company1NameAr}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, company1NameAr: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
+                      />
+                    </div>
+                  </div>
+
+                  <input type="hidden" id="entity1-desc-en" value={brandingForm.company1Desc} />
+                  <input type="hidden" id="entity1-desc-ar" value={brandingForm.company1DescAr} />
+
+                  <div>
+                    <label className="block text-gray-400 font-bold mb-2">{lang === "en" ? "Corporate Logo Asset" : "شعار الشركة"}</label>
+                    <div className="flex flex-col sm:flex-row items-center gap-4 bg-black/60 p-4 rounded-xl border border-gray-900">
+                      <div className="w-16 h-16 rounded-xl bg-black border border-gray-800 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                        {brandingForm.company1Logo ? (
+                          <img src={brandingForm.company1Logo} alt="Preview 1" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] text-gray-600 font-black">No Logo</span>
                         )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+                      </div>
+                      <div className="w-full space-y-2">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => handleLogoUpload(e, "company1Logo")}
+                          className="hidden"
+                          id="company1-logo-file"
+                        />
+                        <label
+                          htmlFor="company1-logo-file"
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-gray-800/60 hover:bg-gray-800 border border-gray-700/60 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                        >
+                          {lang === "en" ? "Upload Custom Image" : "رفع شعار مخصص"}
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-        {/* BRANDING TAB */}
-        {activeTab === "branding" && (
-          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 sm:p-8">
-            <h2 className="text-xl font-black text-white mb-6">إعدادات الهوية والشركات المالكة</h2>
-            <form onSubmit={handleSaveBranding} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-gray-400 font-bold text-xs mb-1">الشركة المالكة الأولى (إنجليزي)</label>
-                  <input type="text" value={brandingForm.company1Name} onChange={(e) => setBrandingForm({ ...brandingForm, company1Name: e.target.value })} className="w-full p-2.5 bg-black border border-gray-800 rounded text-white text-xs font-bold" />
+                {/* Company 2 Configuration */}
+                <div className="bg-black/40 border border-gray-900 rounded-2xl p-5 sm:p-6 space-y-4">
+                  <div className="border-b border-gray-900 pb-3 mb-2 flex justify-between items-center">
+                    <h3 className="text-sm font-black text-[#D30014] uppercase tracking-wider">
+                      {lang === "en" ? "Owning Entity 2 (Technology)" : "الجهة المالكة الثانية (التكنولوجيا)"}
+                    </h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-gray-400 font-bold mb-1.5">{lang === "en" ? "Company Name (English)" : "اسم الشركة (بالإنكليزية)"} *</label>
+                      <input
+                        type="text"
+                        required
+                        id="entity2-name-en"
+                        value={brandingForm.company2Name}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, company2Name: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-gray-400 font-bold mb-1.5">{lang === "en" ? "Company Name (Arabic)" : "اسم الشركة (بالعربية)"} *</label>
+                      <input
+                        type="text"
+                        required
+                        id="entity2-name-ar"
+                        value={brandingForm.company2NameAr}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, company2NameAr: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
+                      />
+                    </div>
+                  </div>
+
+                  <input type="hidden" id="entity2-desc-en" value={brandingForm.company2Desc} />
+                  <input type="hidden" id="entity2-desc-ar" value={brandingForm.company2DescAr} />
+
+                  <div>
+                    <label className="block text-gray-400 font-bold mb-2">{lang === "en" ? "Corporate Logo Asset" : "شعار الشركة"}</label>
+                    <div className="flex flex-col sm:flex-row items-center gap-4 bg-black/60 p-4 rounded-xl border border-gray-900">
+                      <div className="w-16 h-16 rounded-xl bg-black border border-gray-800 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                        {brandingForm.company2Logo ? (
+                          <img src={brandingForm.company2Logo} alt="Preview 2" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] text-gray-600 font-black">No Logo</span>
+                        )}
+                      </div>
+                      <div className="w-full space-y-2">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => handleLogoUpload(e, "company2Logo")}
+                          className="hidden"
+                          id="company2-logo-file"
+                        />
+                        <label
+                          htmlFor="company2-logo-file"
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-gray-800/60 hover:bg-gray-800 border border-gray-700/60 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                        >
+                          {lang === "en" ? "Upload Custom Image" : "رفع شعار مخصص"}
+                        </label>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-gray-400 font-bold text-xs mb-1">الشركة المالكة الأولى (عربي)</label>
-                  <input type="text" value={brandingForm.company1NameAr} onChange={(e) => setBrandingForm({ ...brandingForm, company1NameAr: e.target.value })} className="w-full p-2.5 bg-black border border-gray-800 rounded text-white text-xs font-bold" />
-                </div>
-                <div>
-                  <label className="block text-gray-400 font-bold text-xs mb-1">الشركة المالكة الثانية (إنجليزي)</label>
-                  <input type="text" value={brandingForm.company2Name} onChange={(e) => setBrandingForm({ ...brandingForm, company2Name: e.target.value })} className="w-full p-2.5 bg-black border border-gray-800 rounded text-white text-xs font-bold" />
-                </div>
-                <div>
-                  <label className="block text-gray-400 font-bold text-xs mb-1">الشركة المالكة الثانية (عربي)</label>
-                  <input type="text" value={brandingForm.company2NameAr} onChange={(e) => setBrandingForm({ ...brandingForm, company2NameAr: e.target.value })} className="w-full p-2.5 bg-black border border-gray-800 rounded text-white text-xs font-bold" />
-                </div>
+
               </div>
-              <button type="submit" className="px-6 py-2.5 bg-[#D30014] text-white font-bold rounded text-xs cursor-pointer">حفظ الهوية</button>
+
+              <div className="flex justify-end pt-4 border-t border-gray-900">
+                {!isViewer && (
+                  <button
+                    type="submit"
+                    className="px-6 py-3 bg-[#D30014] hover:bg-[#b00010] text-white text-xs sm:text-sm font-extrabold rounded-lg shadow-lg cursor-pointer"
+                  >
+                    {lang === "en" ? "Save Dynamic Brand Configuration" : "حفظ إعدادات الهوية والشركات المالكة"}
+                  </button>
+                )}
+              </div>
             </form>
           </div>
         )}
 
-        {/* CARDS TAB */}
+        {/* CARDS ASSET MANAGEMENT TAB */}
         {activeTab === "cards" && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center bg-[#121212] p-4 rounded-xl border border-gray-800">
-              <h3 className="text-base font-black">إدارة أصول البطاقات والأرقام التسلسلية</h3>
+          <div className="space-y-6" id="cards-management-panel">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#121212] border border-gray-800 p-6 rounded-2xl">
+              <div>
+                <h2 className="text-xl font-black text-white flex items-center gap-2">
+                  <span className="w-2.5 h-5 bg-[#D30014] rounded-sm"></span>
+                  {lang === "en" ? "Card Asset Management Ledger" : "سجل إدارة الأصول الرقمية والبطاقات"}
+                </h2>
+              </div>
               {!isViewer && (
-                <button onClick={handleGenerateSequentialCard} className="flex items-center gap-2 px-4 py-2 bg-[#D30014] text-white text-xs font-bold rounded cursor-pointer">
-                  <Plus className="w-4 h-4" /> <span>توليد بطاقة متسلسلة</span>
+                <button
+                  onClick={handleGenerateSequentialCard}
+                  className="flex items-center gap-2 px-5 py-3 bg-[#D30014] hover:bg-[#b00010] text-white font-extrabold rounded-xl text-xs sm:text-sm shadow-md cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{lang === "en" ? "Generate Sequential Card" : "توليد بطاقة متسلسلة"}</span>
                 </button>
               )}
             </div>
 
-            <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold">
-                    <th className="py-4 px-6">الرقم المسلسل</th>
-                    <th className="py-4 px-6">الحالة</th>
-                    <th className="py-4 px-6 text-right">العمليات</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
-                  {cards.map((c) => (
-                    <tr key={c.id}>
-                      <td className="py-4 px-6 font-mono text-white font-bold">{c.cardId}</td>
-                      <td className="py-4 px-6">
-                        <span className={`px-2 py-1 rounded text-xs font-bold ${c.status === "Active" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-500"}`}>
-                          {c.status === "Active" ? "نشطة" : "معطلة"}
-                        </span>
-                      </td>
-                      <td className="py-4 px-6 text-right">
-                        {!isViewer && (
-                          <div className="flex justify-end gap-2">
-                            <button onClick={() => handleEditCard(c)} className="p-1.5 bg-gray-800 text-gray-300 rounded cursor-pointer"><Edit3 className="w-4 h-4" /></button>
-                            <button onClick={() => handleDeleteCard(c.id)} className="p-1.5 bg-red-500/10 text-red-400 rounded cursor-pointer"><Trash2 className="w-4 h-4" /></button>
-                          </div>
-                        )}
-                      </td>
+            <div className="bg-[#121212] border border-gray-800 rounded-2xl overflow-hidden">
+              <div className="p-5 border-b border-gray-900 flex justify-between items-center">
+                <span className="text-xs text-gray-500 font-black uppercase tracking-wider">
+                  {lang === "en" ? "Active Serial Keys" : "المفاتيح التسلسلية النشطة"}
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wider font-bold">
+                      <th className="py-4 px-6">{lang === "en" ? "Card Serial" : "الرقم المسلسل"}</th>
+                      <th className="py-4 px-6">{lang === "en" ? "Status" : "الحالة"}</th>
+                      <th className="py-4 px-6 text-right">{lang === "en" ? "Actions" : "العمليات"}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
+                    {cards.map((card: any) => (
+                      <tr key={card.id} className="hover:bg-white/[0.01]">
+                        <td className="py-4 px-6 font-mono font-bold text-white text-base">{card.cardId}</td>
+                        <td className="py-4 px-6">
+                          <span className={`px-2 py-1 rounded text-xs font-bold ${card.status === "Active" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-500"}`}>
+                            {card.status === "Active" ? "نشطة" : "معطلة"}
+                          </span>
+                        </td>
+                        <td className="py-4 px-6 text-right">
+                          {!isViewer && (
+                            <div className="flex justify-end gap-2">
+                              <button onClick={() => handleEditCard(card)} className="p-2 bg-gray-800 text-white rounded cursor-pointer">
+                                <Edit3 className="w-4 h-4 text-[#D30014]" />
+                              </button>
+                              <button onClick={() => handleDeleteCard(card.id)} className="p-2 bg-red-500/10 text-red-500 rounded cursor-pointer">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
 
-        {/* VIEWERS TAB (Master Admin Only) */}
-        {activeTab === "viewers" && !isViewer && (
-          <div className="space-y-6">
-            <div className="bg-[#121212] border border-gray-800 p-6 rounded-xl space-y-4">
-              <h3 className="text-base font-black text-white">إنشاء حساب مراقبة وتدقيق جديد (Read-Only)</h3>
+        {/* ----------------- SECTION 6: VIEWER / AUDITOR ACCOUNTS (MASTER ADMIN ONLY) ----------------- */}
+        {!isLoading && activeTab === "viewers" && !isViewer && (
+          <div className="space-y-8" id="viewers-management-panel">
+            <div className="bg-[#121212] border border-gray-800 p-6 sm:p-8 rounded-2xl space-y-4">
+              <h2 className="text-xl font-black text-white flex items-center gap-2">
+                <Shield className="w-5 h-5 text-[#D30014]" />
+                {lang === "en" ? "Auditor & Read-Only Accounts Management" : "إدارة حسابات المراقبة والتدقيق (صلاحية الاطلاع والطباعة فقط)"}
+              </h2>
+
               <form onSubmit={handleCreateViewerAccount} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <input type="text" required placeholder="اسم المستخدم" value={viewerForm.username} onChange={(e) => setViewerForm({ ...viewerForm, username: e.target.value })} className="p-2.5 bg-black border border-gray-800 rounded text-xs font-bold text-white" />
-                <input type="text" required placeholder="كلمة المرور" value={viewerForm.password} onChange={(e) => setViewerForm({ ...viewerForm, password: e.target.value })} className="p-2.5 bg-black border border-gray-800 rounded text-xs font-bold text-white" />
-                <input type="text" placeholder="اسم المراقب / الجهة" value={viewerForm.name} onChange={(e) => setViewerForm({ ...viewerForm, name: e.target.value })} className="p-2.5 bg-black border border-gray-800 rounded text-xs font-bold text-white" />
-                <button type="submit" className="py-2.5 bg-[#D30014] text-white text-xs font-bold rounded cursor-pointer">إنشاء الحساب</button>
+                <input
+                  type="text"
+                  required
+                  placeholder={lang === "en" ? "Username" : "اسم المستخدم"}
+                  value={viewerForm.username}
+                  onChange={(e) => setViewerForm({ ...viewerForm, username: e.target.value })}
+                  className="px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none text-xs"
+                />
+                <input
+                  type="text"
+                  required
+                  placeholder={lang === "en" ? "Password" : "كلمة المرور"}
+                  value={viewerForm.password}
+                  onChange={(e) => setViewerForm({ ...viewerForm, password: e.target.value })}
+                  className="px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none text-xs"
+                />
+                <input
+                  type="text"
+                  placeholder={lang === "en" ? "Auditor Name" : "اسم المراقب أو الجهة"}
+                  value={viewerForm.name}
+                  onChange={(e) => setViewerForm({ ...viewerForm, name: e.target.value })}
+                  className="px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none text-xs"
+                />
+                <button
+                  type="submit"
+                  disabled={viewerLoading}
+                  className="px-6 py-2.5 bg-[#D30014] text-white text-xs font-extrabold rounded-lg cursor-pointer"
+                >
+                  {lang === "en" ? "Create Account" : "إنشاء الحساب"}
+                </button>
               </form>
             </div>
 
-            <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold">
-                    <th className="py-4 px-6">اسم المستخدم</th>
-                    <th className="py-4 px-6">كلمة المرور</th>
-                    <th className="py-4 px-6">اسم المراقب</th>
-                    <th className="py-4 px-6 text-right">إجراء</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
-                  {viewerAccounts.map((account) => (
-                    <tr key={account.id}>
-                      <td className="py-4 px-6 font-mono text-white font-bold">{account.username}</td>
-                      <td className="py-4 px-6 font-mono text-amber-300">{account.password}</td>
-                      <td className="py-4 px-6">{account.name || "—"}</td>
-                      <td className="py-4 px-6 text-right">
-                        <button onClick={() => handleDeleteViewerAccount(account.id, account.username)} className="p-1.5 bg-red-500/10 text-red-500 rounded cursor-pointer">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
+            <div className="bg-[#121212] border border-gray-800 rounded-2xl overflow-hidden shadow-xl">
+              <div className="p-5 border-b border-gray-800 bg-[#0d0d0d]">
+                <h3 className="text-base font-black text-white">
+                  {lang === "en" ? "Active Auditor Accounts" : "حسابات المراقبة والتدقيق الفعالة"}
+                </h3>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold">
+                      <th className="py-4 px-6">{lang === "en" ? "Username" : "اسم المستخدم"}</th>
+                      <th className="py-4 px-6">{lang === "en" ? "Password" : "كلمة المرور"}</th>
+                      <th className="py-4 px-6">{lang === "en" ? "Name" : "اسم المراقب"}</th>
+                      <th className="py-4 px-6 text-right">{lang === "en" ? "Actions" : "الإجراءات"}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-900 text-xs sm:text-sm font-semibold text-gray-300">
+                    {viewerAccounts.map((account) => (
+                      <tr key={account.id}>
+                        <td className="py-4 px-6 font-mono font-black text-white">{account.username}</td>
+                        <td className="py-4 px-6 font-mono text-amber-300">{account.password}</td>
+                        <td className="py-4 px-6 font-bold text-white">{account.name || "—"}</td>
+                        <td className="py-4 px-6 text-right">
+                          <button
+                            onClick={() => handleDeleteViewerAccount(account.id, account.username)}
+                            className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
 
       </div>
 
-      {/* MODAL: MEMBER CRUD FORM */}
+      {/* ----------------- MODAL MODAL: MEMBER CRUD FORM ----------------- */}
       {showMemberForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
           <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 sm:p-8 relative max-h-[90vh] overflow-y-auto shadow-2xl">
             <h3 className="text-xl font-black mb-6 flex items-center gap-2">
               <span className="w-2.5 h-5 bg-[#D30014] rounded-sm"></span>
-              {editingMember ? "تعديل تفاصيل المشترك B2C" : "إضافة مشترك جديد B2C"}
+              {editingMember ? "Edit B2C Member Details" : "Create New B2C Member Card"}
             </h3>
 
             <form onSubmit={handleSaveMember} className="space-y-4 text-xs sm:text-sm">
@@ -2045,7 +3227,6 @@ export default function AdminDashboard({
                     required
                     value={memberForm.fullName}
                     onChange={(e) => setMemberForm({ ...memberForm, fullName: e.target.value })}
-                    placeholder="Ahmed Ali Al-Rubaie"
                     className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
                   />
                 </div>
@@ -2056,7 +3237,6 @@ export default function AdminDashboard({
                     required
                     value={memberForm.fullNameAr}
                     onChange={(e) => setMemberForm({ ...memberForm, fullNameAr: e.target.value })}
-                    placeholder="أحمد علي الربيعي"
                     className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
                   />
                 </div>
@@ -2069,7 +3249,6 @@ export default function AdminDashboard({
                   required
                   value={memberForm.cardId}
                   onChange={(e) => setMemberForm({ ...memberForm, cardId: e.target.value })}
-                  placeholder="BYD-2026-XXX"
                   className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-mono font-bold outline-none focus:border-[#D30014]"
                 />
               </div>
@@ -2083,7 +3262,7 @@ export default function AdminDashboard({
                     className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
                   >
                     {provincesList.map((p, idx) => (
-                      <option key={idx} value={p.en}>{p.ar} ({p.en})</option>
+                      <option key={idx} value={p.en}>{p.en}</option>
                     ))}
                   </select>
                 </div>
@@ -2101,7 +3280,7 @@ export default function AdminDashboard({
               </div>
 
               <div>
-                <label className="block text-gray-400 font-bold mb-1.5">مدة الاشتراك *</label>
+                <label className="block text-gray-400 font-bold mb-1.5">{lang === "en" ? "Subscription Duration" : "مدة الاشتراك"} *</label>
                 <select
                   value={memberForm.durationMonths}
                   onChange={(e) => {
@@ -2122,18 +3301,18 @@ export default function AdminDashboard({
                   }}
                   className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
                 >
-                  <option value={6}>6 أشهر من تاريخ التسجيل - 25,000 د.ع</option>
-                  <option value={12}>سنة واحدة من تاريخ التسجيل - 50,000 د.ع</option>
+                  <option value={6}>{lang === "en" ? "6 Months - 25,000 IQD" : "6 أشهر من تاريخ التسجيل - 25,000 د.ع"}</option>
+                  <option value={12}>{lang === "en" ? "1 Year - 50,000 IQD" : "سنة واحدة من تاريخ التسجيل - 50,000 د.ع"}</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-gray-400 font-bold mb-1.5">أقرب نقطة دالة</label>
+                <label className="block text-gray-400 font-bold mb-1.5">{lang === "en" ? "Nearest Landmark" : "أقرب نقطة دالة"}</label>
                 <input
                   type="text"
                   value={memberForm.nearestLandmark || ""}
                   onChange={(e) => setMemberForm({ ...memberForm, nearestLandmark: e.target.value })}
-                  placeholder="مثال: قرب دجلة مول"
+                  placeholder={lang === "en" ? "e.g. Near Dijlah Mall" : "مثال: قرب دجلة مول"}
                   className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
                 />
               </div>
@@ -2142,13 +3321,13 @@ export default function AdminDashboard({
                 <button
                   type="button"
                   onClick={() => setShowMemberForm(false)}
-                  className="px-5 py-2.5 bg-[#121212] border border-gray-800 text-gray-300 font-bold rounded-lg cursor-pointer"
+                  className="px-5 py-2.5 bg-[#121212] hover:bg-gray-950 border border-gray-800 text-gray-300 font-bold rounded-lg cursor-pointer"
                 >
                   {t.cancel}
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white font-bold rounded-lg transition-all cursor-pointer"
+                  className="px-5 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white font-bold rounded-lg cursor-pointer"
                 >
                   {t.save}
                 </button>
@@ -2158,13 +3337,13 @@ export default function AdminDashboard({
         </div>
       )}
 
-      {/* MODAL: PARTNER CRUD FORM */}
+      {/* ----------------- MODAL MODAL: PARTNER CRUD FORM ----------------- */}
       {showPartnerForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
           <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 sm:p-8 relative max-h-[90vh] overflow-y-auto shadow-2xl">
             <h3 className="text-xl font-black mb-6 flex items-center gap-2">
               <span className="w-2.5 h-5 bg-[#D30014] rounded-sm"></span>
-              {editingPartner ? "تعديل تفاصيل الشريك B2B" : "إضافة شركة شريكة جديدة B2B"}
+              {editingPartner ? "Edit B2B Partner Details" : "Establish New B2B Partner Contract"}
             </h3>
 
             <form onSubmit={handleSavePartner} className="space-y-4 text-xs sm:text-sm">
@@ -2195,13 +3374,13 @@ export default function AdminDashboard({
                 <button
                   type="button"
                   onClick={() => setShowPartnerForm(false)}
-                  className="px-5 py-2.5 bg-[#121212] border border-gray-800 text-gray-300 font-bold rounded-lg cursor-pointer"
+                  className="px-5 py-2.5 bg-[#121212] hover:bg-gray-950 border border-gray-800 text-gray-300 font-bold rounded-lg cursor-pointer"
                 >
                   {t.cancel}
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white font-bold rounded-lg transition-all cursor-pointer"
+                  className="px-5 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white font-bold rounded-lg cursor-pointer"
                 >
                   {t.save}
                 </button>
@@ -2211,18 +3390,18 @@ export default function AdminDashboard({
         </div>
       )}
 
-      {/* MODAL: CARD CRUD FORM */}
+      {/* ----------------- MODAL MODAL: CARD CRUD FORM ----------------- */}
       {showCardForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
           <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 sm:p-8 relative shadow-2xl">
             <h3 className="text-xl font-black mb-6 flex items-center gap-2">
               <span className="w-2.5 h-5 bg-[#D30014] rounded-sm"></span>
-              {editingCard ? "تعديل أصول البطاقة" : "توليد بطاقة جديدة"}
+              {editingCard ? "Modify Card Asset Details" : "Register New Card Asset"}
             </h3>
 
             <form onSubmit={handleSaveCard} className="space-y-4 text-xs sm:text-sm">
               <div>
-                <label className="block text-gray-400 font-bold mb-1.5">الرقم المسلسل للبطاقة *</label>
+                <label className="block text-gray-400 font-bold mb-1.5">{lang === "en" ? "Card Serial ID" : "الرقم المسلسل للبطاقة"} *</label>
                 <input
                   type="text"
                   required
@@ -2236,13 +3415,13 @@ export default function AdminDashboard({
                 <button
                   type="button"
                   onClick={() => setShowCardForm(false)}
-                  className="px-5 py-2.5 bg-[#121212] border border-gray-800 text-gray-300 font-bold rounded-lg cursor-pointer"
+                  className="px-5 py-2.5 bg-[#121212] hover:bg-gray-950 border border-gray-800 text-gray-300 font-bold rounded-lg cursor-pointer"
                 >
                   {t.cancel}
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white font-bold rounded-lg transition-all cursor-pointer"
+                  className="px-5 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white font-bold rounded-lg cursor-pointer"
                 >
                   {t.save}
                 </button>
