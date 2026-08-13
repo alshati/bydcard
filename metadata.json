@@ -1,0 +1,6 @@
+{
+  "name": "BYD Card - Build Your Dream",
+  "description": "Bilingual premium digital platform for BYD Card verification, B2B and B2C promotions, partner loop carousel, and full administrative CRUD dashboard for members, partners, and financial reporting.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
