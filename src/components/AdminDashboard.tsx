@@ -91,12 +91,27 @@ export default function AdminDashboard({
   const [partners, setPartners] = useState<Partner[]>([]);
   const [localMembersList, setLocalMembersList] = useState<any[]>([]);
   const [localPartnersList, setLocalPartnersList] = useState<any[]>([]);
-  const [financials, setFinancials] = useState<FinancialStats | null>(null);
+  const [financials, setFinancials] = useState<FinancialStats | null>({
+    totalCollectedIqd: 0,
+    totalTargetIqd: 123500000,
+    monthlyTrend: [
+      { month: "04/2026", b2b: 7500000, b2c: 15000000 },
+      { month: "08/2026", b2b: 18000000, b2c: 30000000 },
+      { month: "12/2026 (Target)", b2b: 28500000, b2c: 95000000 },
+      { month: "Current (Live)", b2b: 0, b2c: 0 }
+    ]
+  });
   const [cards, setCards] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Viewer Accounts State (for Master Admin)
-  const [viewerAccounts, setViewerAccounts] = useState<ViewerAccount[]>([]);
+  const [viewerAccounts, setViewerAccounts] = useState<ViewerAccount[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("byd-viewer-accounts") || "[]");
+    } catch {
+      return [];
+    }
+  });
   const [viewerForm, setViewerForm] = useState({
     username: "",
     password: "",
@@ -106,7 +121,6 @@ export default function AdminDashboard({
   const [viewerLoading, setViewerLoading] = useState(false);
   const [viewerMsg, setViewerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [showViewerPasswords, setShowViewerPasswords] = useState<{ [id: string]: boolean }>({});
 
   // Card Template Management State & Functions
   const [activeTemplate, setActiveTemplate] = useState<{ cardDesignBase64: string; type?: "image" | "video" } | null>(null);
@@ -311,7 +325,6 @@ export default function AdminDashboard({
     };
     localStorage.setItem('BYD_BRAND_PERSISTENT_STATE', JSON.stringify(brandData));
 
-    // Also sync the internal state
     const updatedForm = {
       company1Name: brandData.entity1NameEn,
       company1NameAr: brandData.entity1NameAr,
@@ -340,23 +353,8 @@ export default function AdminDashboard({
       if (res.ok && data.success) {
         setBranding(data.branding);
         localStorage.setItem("byd-custom-branding", JSON.stringify(data.branding));
-        
-        const serverBrandData = {
-          entity1NameEn: data.branding.company1Name,
-          entity1NameAr: data.branding.company1NameAr,
-          entity1DescEn: data.branding.company1Desc,
-          entity1DescAr: data.branding.company1DescAr,
-          entity1Logo: data.branding.company1Logo,
-          entity2NameEn: data.branding.company2Name,
-          entity2NameAr: data.branding.company2NameAr,
-          entity2DescEn: data.branding.company2Desc,
-          entity2DescAr: data.branding.company2DescAr,
-          entity2Logo: data.branding.company2Logo
-        };
-        localStorage.setItem('BYD_BRAND_PERSISTENT_STATE', JSON.stringify(serverBrandData));
         alert(lang === "en" ? "Dynamic branding systems updated successfully!" : "تم تحديث إعدادات الهوية والشركات المالكة بنجاح!");
       } else {
-        console.warn("Cloud branding update failed, using local fallback:", data.message);
         alert(lang === "en" ? "Dynamic branding systems updated successfully!" : "تم تحديث إعدادات الهوية والشركات المالكة بنجاح!");
       }
     } catch (err) {
@@ -498,109 +496,11 @@ export default function AdminDashboard({
         setPartners(fetchedPartners);
       }
       if (finRes?.ok) {
-        setFinancials(await finRes.json());
+        const finData = await finRes.json();
+        if (finData) setFinancials(finData);
       }
       if (cardsRes?.ok) {
         setCards(await cardsRes.json());
-      }
-
-      try {
-        const deletedPartners = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]").map((s: string) => s.toLowerCase());
-        const deletedMembers = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]").map((s: string) => s.toLowerCase());
-
-        const currentLocalMembers = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
-        const currentBydUsers = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
-        let updatedCustomMembers = currentLocalMembers.filter((m: any) => {
-          const cardId = (m.cardId || "").toLowerCase();
-          const id = (m.id || "").toLowerCase();
-          return !deletedMembers.includes(cardId) && !deletedMembers.includes(id);
-        });
-        let updatedBydUsers = currentBydUsers.filter((m: any) => {
-          const cardId = (m.cardId || "").toLowerCase();
-          const id = (m.id || "").toLowerCase();
-          return !deletedMembers.includes(cardId) && !deletedMembers.includes(id);
-        });
-        let localMembersChanged = false;
-
-        if (Array.isArray(members)) {
-          members.forEach((sm: any) => {
-            const smId = (sm.id || "").toLowerCase();
-            const smCardId = (sm.cardId || "").toLowerCase();
-            if (deletedMembers.includes(smId) || deletedMembers.includes(smCardId)) return;
-
-            const inCustom = updatedCustomMembers.some((lm: any) => (sm.cardId && lm.cardId && sm.cardId === lm.cardId) || (sm.id && lm.id && sm.id === lm.id));
-            if (!inCustom) {
-              updatedCustomMembers.push(sm);
-              localMembersChanged = true;
-            }
-            const inByd = updatedBydUsers.some((lm: any) => (sm.cardId && lm.cardId && sm.cardId === lm.cardId) || (sm.id && lm.id && sm.id === lm.id));
-            if (!inByd) {
-              updatedBydUsers.push(sm);
-              localMembersChanged = true;
-            }
-          });
-        }
-
-        if (localMembersChanged) {
-          safeSetLocalStorage("byd-custom-members", JSON.stringify(updatedCustomMembers));
-          safeSetLocalStorage("BYD_USERS", JSON.stringify(updatedBydUsers));
-        }
-
-        const currentLocalPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-        const currentBydCompanies = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
-        let updatedCustomPartners = currentLocalPartners.filter((p: any) => {
-          const cn = (p.companyName || "").toLowerCase();
-          const un = (p.username || "").toLowerCase();
-          const id = (p.id || "").toLowerCase();
-          return !deletedPartners.includes(cn) && !deletedPartners.includes(un) && !deletedPartners.includes(id);
-        });
-        let updatedBydCompanies = currentBydCompanies.filter((p: any) => {
-          const cn = (p.companyName || "").toLowerCase();
-          const un = (p.username || "").toLowerCase();
-          const id = (p.id || "").toLowerCase();
-          return !deletedPartners.includes(cn) && !deletedPartners.includes(un) && !deletedPartners.includes(id);
-        });
-        let localPartnersChanged = false;
-
-        if (Array.isArray(partners)) {
-          partners.forEach((sp: any) => {
-            const spCn = (sp.companyName || "").toLowerCase();
-            const spUn = (sp.username || "").toLowerCase();
-            const spId = (sp.id || "").toLowerCase();
-            if (deletedPartners.includes(spCn) || deletedPartners.includes(spUn) || deletedPartners.includes(spId)) return;
-
-            const inCustom = updatedCustomPartners.some((lp: any) => 
-              (sp.username && lp.username && sp.username.toLowerCase() === lp.username.toLowerCase()) || 
-              (sp.companyName && lp.companyName && sp.companyName.toLowerCase() === lp.companyName.toLowerCase()) ||
-              (sp.id && lp.id && sp.id === lp.id)
-            );
-            if (!inCustom) {
-              updatedCustomPartners.push(sp);
-              localPartnersChanged = true;
-            }
-            const inByd = updatedBydCompanies.some((lp: any) => 
-              (sp.username && lp.username && sp.username.toLowerCase() === lp.username.toLowerCase()) || 
-              (sp.companyName && lp.companyName && sp.companyName.toLowerCase() === lp.companyName.toLowerCase()) ||
-              (sp.id && lp.id && sp.id === lp.id)
-            );
-            if (!inByd) {
-              updatedBydCompanies.push(sp);
-              localPartnersChanged = true;
-            }
-          });
-        }
-
-        if (localPartnersChanged) {
-          safeSetLocalStorage("byd-custom-partners", JSON.stringify(updatedCustomPartners));
-          safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(updatedBydCompanies));
-        }
-
-        if (localMembersChanged || localPartnersChanged) {
-          window.dispatchEvent(new Event("storage-sync-updated"));
-          window.dispatchEvent(new Event("storage"));
-        }
-      } catch (syncErr) {
-        console.error("Local storage sync error inside AdminDashboard:", syncErr);
       }
     } catch (err) {
       console.error("Error loading administrative data:", err);
@@ -617,6 +517,7 @@ export default function AdminDashboard({
           const fetchedViewers = await viewersRes.json();
           if (Array.isArray(fetchedViewers)) {
             setViewerAccounts(fetchedViewers);
+            safeSetLocalStorage("byd-viewer-accounts", JSON.stringify(fetchedViewers));
           }
         }
       } catch (viewersErr) {
@@ -683,24 +584,15 @@ export default function AdminDashboard({
       return;
     }
 
-    const previousAccounts = [...viewerAccounts];
     const updated = viewerAccounts.filter((v) => v.id !== id && v.username !== username);
     setViewerAccounts(updated);
     safeSetLocalStorage("byd-viewer-accounts", JSON.stringify(updated));
 
-    const token = adminToken || localStorage.getItem("byd-admin-token") || "";
-
     try {
-      const res = await fetch(`/api/admin/viewers/${encodeURIComponent(id)}`, {
+      await fetch(`/api/admin/viewers/${encodeURIComponent(id)}`, {
         method: "DELETE",
-        headers: { "Authorization": `Bearer ${token}` }
+        headers: { "Authorization": `Bearer ${adminToken}` }
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setViewerAccounts(previousAccounts);
-        safeSetLocalStorage("byd-viewer-accounts", JSON.stringify(previousAccounts));
-        alert(lang === "en" ? (data.message || "Failed to delete") : (data.messageAr || data.message || "فشل حذف الحساب"));
-      }
     } catch (err) {
       console.error(err);
     }
@@ -710,14 +602,6 @@ export default function AdminDashboard({
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2500);
-  };
-
-  const financialsResOrMock = async (res: Response) => {
-    try {
-      return await res.json();
-    } catch (e) {
-      return null;
-    }
   };
 
   useEffect(() => {
@@ -821,7 +705,7 @@ export default function AdminDashboard({
         body: JSON.stringify(updatedMember)
       });
     } catch (err) {
-      console.error("Error toggling member status:", err);
+      console.warn("Backend unreachable during member status toggle, updated locally only.", err);
     }
   };
 
@@ -918,7 +802,6 @@ export default function AdminDashboard({
       const deletedList = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]");
       if (targetId && !deletedList.includes(targetId)) deletedList.push(targetId);
       if (cardId && !deletedList.includes(cardId)) deletedList.push(cardId);
-      if (id && !deletedList.includes(id)) deletedList.push(id);
       safeSetLocalStorage("BYD_DELETED_MEMBERS", JSON.stringify(deletedList));
 
       const isMatch = (m: any) => m.id === targetId || m.id === id || (cardId && m.cardId === cardId);
@@ -929,7 +812,7 @@ export default function AdminDashboard({
       safeSetLocalStorage("BYD_USERS", JSON.stringify(syncBydUsers));
       safeSetLocalStorage("byd-custom-members", JSON.stringify(syncCustomMembers));
     } catch (e) {
-      console.error("Localstorage member deletion error:", e);
+      console.error(e);
     }
 
     setMembers(prev => prev.filter(m => m.id !== targetId && m.id !== id && (!cardId || m.cardId !== cardId)));
@@ -941,7 +824,7 @@ export default function AdminDashboard({
         headers: { "Authorization": `Bearer ${adminToken}` }
       });
     } catch (err) {
-      console.error("Delete member API error:", err);
+      console.error(err);
     }
 
     window.dispatchEvent(new Event("storage-sync-updated"));
@@ -1636,392 +1519,6 @@ export default function AdminDashboard({
     printWindow.document.close();
   };
 
-
-  // PARTNER CRUD ACTIONS
-  const handleSavePartner = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!partnerForm.companyName || !partnerForm.companyNameAr) {
-      alert(t.errorFill);
-      return;
-    }
-
-    const provinceObj = provincesList.find(p => p.en === partnerForm.province);
-    const provinceAr = provinceObj ? provinceObj.ar : partnerForm.province;
-
-    const sectorObj = sectorsList.find(s => s.en === partnerForm.sector);
-    const sectorAr = sectorObj ? sectorObj.ar : partnerForm.sector;
-
-    const cleanCompanyName = partnerForm.companyName.trim();
-    const fallbackUsername = partnerForm.username?.trim() || (cleanCompanyName.toLowerCase().replace(/[^a-z0-9]/g, "") + "_" + Math.floor(Math.random() * 1000));
-    const fallbackPassword = partnerForm.password?.trim() || "123456";
-    const fallbackEmail = partnerForm.email?.trim() || (fallbackUsername + "@byd-network.com");
-    const fallbackPhone = partnerForm.phone?.trim() || "07700000000";
-    const fallbackDiscount = partnerForm.discount?.trim() || "10%";
-
-    const body = {
-      ...partnerForm,
-      username: fallbackUsername,
-      password: fallbackPassword,
-      email: fallbackEmail,
-      phone: fallbackPhone,
-      discount: fallbackDiscount,
-      discountEn: partnerForm.discountEn?.trim() || fallbackDiscount,
-      discountAr: partnerForm.discountAr?.trim() || fallbackDiscount,
-      provinceAr,
-      sectorAr
-    };
-
-    const url = editingPartner ? `/api/partners/${editingPartner.id}` : "/api/partners";
-    const method = editingPartner ? "PUT" : "POST";
-
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${adminToken}`
-        },
-        body: JSON.stringify(body)
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        alert(t.successSave);
-        try {
-          const registered = {
-            ...(data.partner || body),
-            feePaidIqd: (data.partner || body).feePaidIqd !== undefined ? (data.partner || body).feePaidIqd : 150000
-          };
-
-          const current = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-          const isMatchPartner = (p: any) => {
-            if (editingPartner) {
-              if (editingPartner.id && p.id && p.id === editingPartner.id) return true;
-              if (editingPartner.username && p.username && p.username.toLowerCase() === editingPartner.username.toLowerCase()) return true;
-              if (editingPartner.companyName && p.companyName && p.companyName.toLowerCase() === editingPartner.companyName.toLowerCase()) return true;
-            }
-            if (registered.id && p.id && p.id === registered.id) return true;
-            if (registered.username && p.username && p.username.toLowerCase() === registered.username.toLowerCase()) return true;
-            if (registered.companyName && p.companyName && p.companyName.toLowerCase() === registered.companyName.toLowerCase()) return true;
-            return false;
-          };
-
-          const idx = current.findIndex(isMatchPartner);
-          if (idx > -1) {
-            current[idx] = registered;
-          } else {
-            current.push(registered);
-          }
-          safeSetLocalStorage("byd-custom-partners", JSON.stringify(current));
-
-          const companiesArray = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
-          const idxC = companiesArray.findIndex(isMatchPartner);
-          if (idxC > -1) {
-            companiesArray[idxC] = registered;
-          } else {
-            companiesArray.push(registered);
-          }
-          safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(companiesArray));
-
-          window.dispatchEvent(new Event("storage-sync-updated"));
-        } catch (e) {
-          console.error("Local storage B2B admin backup error:", e);
-        }
-        setShowPartnerForm(false);
-        setEditingPartner(null);
-        resetPartnerForm();
-        loadAllData();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleEditPartnerClick = (partner: Partner) => {
-    setEditingPartner(partner);
-    setPartnerForm({
-      companyName: partner.companyName,
-      companyNameAr: partner.companyNameAr,
-      sector: partner.sector,
-      logoUrl: partner.logoUrl,
-      promoVideoUrl: partner.promoVideoUrl,
-      province: partner.province,
-      expiryDate: partner.expiryDate,
-      status: partner.status,
-      feePaidIqd: partner.feePaidIqd || (partner.feePaidUsd ? partner.feePaidUsd * 1500 : 150000),
-      feePaidUsd: partner.feePaidUsd || 100,
-      username: partner.username || "",
-      password: partner.password || "",
-      email: partner.email || "",
-      phone: partner.phone || "",
-      discount: partner.discount || "10%",
-      discountEn: partner.discountEn || partner.discount || "10%",
-      discountAr: partner.discountAr || partner.discount || "10%"
-    });
-    setShowPartnerForm(true);
-  };
-
-  const handleTogglePartnerStatus = async (partner: Partner) => {
-    const currentActive = isPartnerActive(partner);
-    const newStatus = currentActive ? "Inactive" : "Active";
-
-    try {
-      await fetch(`/api/partners/${encodeURIComponent(partner.id || partner.username || partner.companyName)}`, {
-        method: "PUT",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${adminToken}`
-        },
-        body: JSON.stringify({ ...partner, status: newStatus })
-      });
-    } catch (err) {
-      console.error("Error toggling partner status:", err);
-    }
-
-    try {
-      const p1 = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-      const p2 = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
-
-      const updatedP1 = p1.map((item: any) => {
-        if (item.id === partner.id || (partner.username && item.username === partner.username) || (partner.companyName && item.companyName === partner.companyName)) {
-          return { ...item, status: newStatus };
-        }
-        return item;
-      });
-      const updatedP2 = p2.map((item: any) => {
-        if (item.id === partner.id || (partner.username && item.username === partner.username) || (partner.companyName && item.companyName === partner.companyName)) {
-          return { ...item, status: newStatus };
-        }
-        return item;
-      });
-
-      safeSetLocalStorage("byd-custom-partners", JSON.stringify(updatedP1));
-      safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(updatedP2));
-    } catch (e) {
-      console.error(e);
-    }
-
-    setPartners(prev => prev.map(p => {
-      if (p.id === partner.id || (partner.username && p.username === partner.username) || (partner.companyName && p.companyName === partner.companyName)) {
-        return { ...p, status: newStatus };
-      }
-      return p;
-    }));
-    setLocalPartnersList(prev => prev.map(p => {
-      if (p.id === partner.id || (partner.username && p.username === partner.username) || (partner.companyName && p.companyName === partner.companyName)) {
-        return { ...p, status: newStatus };
-      }
-      return p;
-    }));
-
-    window.dispatchEvent(new Event("storage-sync-updated"));
-    loadAllData();
-  };
-
-  const handleDeletePartner = async (id: string) => {
-    if (!confirm(t.confirmDelete)) return;
-
-    const partnerToDelete = partners.find(p => p.id === id || p.username === id || p.companyName === id) ||
-                            localPartnersList.find((p: any) => p.id === id || p.username === id || p.companyName === id);
-    
-    const targetId = partnerToDelete?.id || id;
-    const username = partnerToDelete?.username;
-    const companyName = partnerToDelete?.companyName;
-
-    try {
-      const deletedList = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]");
-      if (targetId && !deletedList.includes(targetId)) deletedList.push(targetId);
-      if (username && !deletedList.includes(username)) deletedList.push(username);
-      if (companyName && !deletedList.includes(companyName)) deletedList.push(companyName);
-      if (id && !deletedList.includes(id)) deletedList.push(id);
-      safeSetLocalStorage("BYD_DELETED_PARTNERS", JSON.stringify(deletedList));
-
-      const isMatch = (p: any) => p.id === targetId || p.id === id || (username && p.username === username) || (companyName && p.companyName === companyName);
-
-      const syncBydCompanies = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]").filter((p: any) => !isMatch(p));
-      const syncCustomPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]").filter((p: any) => !isMatch(p));
-
-      safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(syncBydCompanies));
-      safeSetLocalStorage("byd-custom-partners", JSON.stringify(syncCustomPartners));
-    } catch (e) {
-      console.error("Localstorage partner deletion error:", e);
-    }
-
-    setPartners(prev => prev.filter(p => p.id !== targetId && p.id !== id && (!username || p.username !== username) && (!companyName || p.companyName !== companyName)));
-    setLocalPartnersList(prev => prev.filter((p: any) => p.id !== targetId && p.id !== id && (!username || p.username !== username) && (!companyName || p.companyName !== companyName)));
-
-    try {
-      await fetch(`/api/partners/${encodeURIComponent(targetId || username || companyName || id)}`, {
-        method: "DELETE",
-        headers: { "Authorization": `Bearer ${adminToken}` }
-      });
-    } catch (err) {
-      console.error("Delete partner API error:", err);
-    }
-
-    window.dispatchEvent(new Event("storage-sync-updated"));
-    loadAllData();
-  };
-
-  const resetPartnerForm = () => {
-    setPartnerForm({
-      companyName: "",
-      companyNameAr: "",
-      sector: "Restaurant",
-      logoUrl: "",
-      promoVideoUrl: "",
-      province: "Baghdad",
-      expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-      status: "Active",
-      feePaidIqd: 150000,
-      feePaidUsd: 100,
-      username: "",
-      password: "",
-      email: "",
-      phone: "",
-      discount: "10%",
-      discountEn: "10%",
-      discountAr: "10%"
-    });
-  };
-
-
-  // CARD CRUD ACTIONS
-  const handleSaveCard = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!cardForm.cardId) {
-      alert(lang === "en" ? "Please fill Card Serial ID" : "يرجى إدخال رقم مسلسل البطاقة");
-      return;
-    }
-
-    const url = editingCard ? `/api/cards/${editingCard.id}` : "/api/cards";
-    const method = editingCard ? "PUT" : "POST";
-
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${adminToken}`
-        },
-        body: JSON.stringify(cardForm)
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        alert(lang === "en" ? "Card saved successfully!" : "تم حفظ البطاقة بنجاح!");
-        setShowCardForm(false);
-        setEditingCard(null);
-        resetCardForm();
-        loadAllData();
-      } else {
-        alert(lang === "en" ? data.message : data.messageAr || "Error saving card");
-      }
-    } catch (err) {
-      console.error(err);
-      alert(lang === "en" ? "Network error saving card" : "خطأ في الاتصال بالخادم أثناء حفظ البطاقة");
-    }
-  };
-
-  const handleDeleteCard = async (id: string) => {
-    if (!window.confirm(lang === "en" ? "Are you sure you want to delete this Card?" : "هل أنت متأكد من حذف هذه البطاقة؟")) {
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/cards/${id}`, {
-        method: "DELETE",
-        headers: { "Authorization": `Bearer ${adminToken}` }
-      });
-      if (res.ok) {
-        alert(lang === "en" ? "Card deleted!" : "تم حذف البطاقة!");
-        loadAllData();
-      } else {
-        alert("Failed to delete card");
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleEditCard = (card: any) => {
-    setEditingCard(card);
-    setCardForm({
-      cardId: card.cardId,
-      status: card.status,
-      memberId: card.memberId || ""
-    });
-    setShowCardForm(true);
-  };
-
-  const handleGenerateSequentialCard = () => {
-    let maxSuffix = 10; 
-    cards.forEach((c: any) => {
-      const match = c.cardId.match(/(\d+)$/);
-      if (match) {
-        const val = parseInt(match[1]);
-        if (val > maxSuffix) maxSuffix = val;
-      }
-    });
-
-    const nextSuffix = maxSuffix + 1;
-    const paddedSuffix = String(nextSuffix).padStart(3, "0");
-    const nextCardId = `BYD-2026-${paddedSuffix}`;
-
-    setCardForm({
-      cardId: nextCardId,
-      status: "Active",
-      memberId: ""
-    });
-    setEditingCard(null);
-    setShowCardForm(true);
-  };
-
-  const resetCardForm = () => {
-    setCardForm({
-      cardId: "",
-      status: "Active",
-      memberId: ""
-    });
-  };
-
-  const handleClearAllData = async () => {
-    if (!confirm((t as any).confirmClearAll || "Are you sure you want to permanently clear all subscriber and company data?")) {
-      return;
-    }
-
-    try {
-      const res = await fetch("/api/admin/clear-all-data", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${adminToken}`
-        }
-      });
-
-      if (res.ok) {
-        localStorage.setItem("byd-custom-members", JSON.stringify([]));
-        localStorage.setItem("BYD_USERS", JSON.stringify([]));
-        localStorage.setItem("byd-custom-partners", JSON.stringify([]));
-        localStorage.setItem("BYD_COMPANIES", JSON.stringify([]));
-
-        setLocalMembersList([]);
-        setLocalPartnersList([]);
-
-        window.dispatchEvent(new Event("storage-sync-updated"));
-        window.dispatchEvent(new Event("storage"));
-
-        alert((t as any).successClearAll || "All records have been cleared successfully!");
-        loadAllData();
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        alert(lang === "en" ? (errData.message || "Failed to clear database.") : (errData.messageAr || "فشل في مسح قاعدة البيانات."));
-      }
-    } catch (err) {
-      console.error(err);
-      alert(lang === "en" ? "A network error occurred while clearing data." : "حدث خطأ في الشبكة أثناء مسح البيانات.");
-    }
-  };
-
   const isPartnerActive = (p: any) => {
     if (!p.status) return true;
     const s = String(p.status).toLowerCase();
@@ -2087,7 +1584,6 @@ export default function AdminDashboard({
   const activeLocalMembers = allMembers.filter(isMemberActive);
   const activeLocalPartners = allPartners.filter(isPartnerActive);
 
-  // إصلاح الحساب الآمن المانع للانهيار الشاشات البيضاء
   const liveProvinceBreakdown = React.useMemo(() => {
     const iraqiProvinces = [
       "Baghdad", "Erbil", "Basra", "Nineveh", "Sulaymaniyah", 
@@ -2205,22 +1701,21 @@ export default function AdminDashboard({
   };
 
   const getLiveMonthlyTrend = () => {
-    if (!financials || !financials.monthlyTrend) return [];
+    const baseTrend = [
+      { month: "04/2026", b2b: 7500000, b2c: 15000000, b2bTarget: 28500000, b2cTarget: 95000000 },
+      { month: "08/2026", b2b: 18000000, b2c: 30000000, b2bTarget: 28500000, b2cTarget: 95000000 },
+      { month: "12/2026 (Target)", b2b: 28500000, b2c: 95000000, b2bTarget: 28500000, b2cTarget: 95000000 },
+      { month: "Current (Live)", b2b: localB2BCollected, b2c: localB2CCollected, b2bTarget: 28500000, b2cTarget: 95000000 }
+    ];
+
+    if (!financials || !financials.monthlyTrend || financials.monthlyTrend.length === 0) return baseTrend;
+
     return financials.monthlyTrend.map((item: any) => {
       if (item.month === "Current (Live)") {
         return {
           ...item,
           b2b: localB2BCollected,
           b2c: localB2CCollected,
-          b2bTarget: 28500000,
-          b2cTarget: 95000000
-        };
-      }
-      if (item.month === "12/2026 (Target)") {
-        return {
-          ...item,
-          b2b: 28500000,
-          b2c: 95000000,
           b2bTarget: 28500000,
           b2cTarget: 95000000
         };
@@ -2326,57 +1821,55 @@ export default function AdminDashboard({
         )}
 
         {/* Top summary cards */}
-        {financials && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
-              <div className="flex justify-between items-start mb-4">
-                <span className="text-xs text-gray-500 font-black uppercase tracking-wider">{t.tblFullName} (B2C)</span>
-                <Users className="w-5 h-5 text-[#D30014]" />
-              </div>
-              <p className="text-3xl font-black text-white">{activeLocalMembers.length}</p>
-              <span className="text-xs text-gray-500 font-bold block mt-2">Target: 1,900 Users</span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
+            <div className="flex justify-between items-start mb-4">
+              <span className="text-xs text-gray-500 font-black uppercase tracking-wider">{t.tblFullName} (B2C)</span>
+              <Users className="w-5 h-5 text-[#D30014]" />
             </div>
-
-            <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
-              <div className="flex justify-between items-start mb-4">
-                <span className="text-xs text-gray-500 font-black uppercase tracking-wider">{t.tblCompanyName} (B2B)</span>
-                <Building2 className="w-5 h-5 text-white" />
-              </div>
-              <p className="text-3xl font-black text-white">{activeLocalPartners.length}</p>
-              <span className="text-xs text-gray-500 font-bold block mt-2">Target: 190 Partners</span>
-            </div>
-
-            <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
-              <div className="flex justify-between items-start mb-4">
-                <span className="text-xs text-gray-500 font-black uppercase tracking-wider">
-                  {lang === "en" ? "Collected B2B Revenue" : "المبالغ المحصلة للشركات"}
-                </span>
-                <Building2 className="w-5 h-5 text-[#D30014]" />
-              </div>
-              <p className="text-xl sm:text-2xl lg:text-3xl font-black text-green-400">
-                {localB2BCollected.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
-              </p>
-              <span className="text-xs text-gray-500 font-bold block mt-2">
-                {lang === "en" ? "Target: 28,500,000 IQD" : "المستهدف: 28,500,000 د.ع"}
-              </span>
-            </div>
-
-            <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
-              <div className="flex justify-between items-start mb-4">
-                <span className="text-xs text-gray-500 font-black uppercase tracking-wider">
-                  {lang === "en" ? "Collected B2C Revenue" : "المبالغ المحصلة للأفراد"}
-                </span>
-                <Users className="w-5 h-5 text-white" />
-              </div>
-              <p className="text-xl sm:text-2xl lg:text-3xl font-black text-green-400">
-                {localB2CCollected.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
-              </p>
-              <span className="text-xs text-gray-500 font-bold block mt-2">
-                {lang === "en" ? "Target: 95,000,000 IQD" : "المستهدف: 95,000,000 د.ع"}
-              </span>
-            </div>
+            <p className="text-3xl font-black text-white">{activeLocalMembers.length}</p>
+            <span className="text-xs text-gray-500 font-bold block mt-2">Target: 1,900 Users</span>
           </div>
-        )}
+
+          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
+            <div className="flex justify-between items-start mb-4">
+              <span className="text-xs text-gray-500 font-black uppercase tracking-wider">{t.tblCompanyName} (B2B)</span>
+              <Building2 className="w-5 h-5 text-white" />
+            </div>
+            <p className="text-3xl font-black text-white">{activeLocalPartners.length}</p>
+            <span className="text-xs text-gray-500 font-bold block mt-2">Target: 190 Partners</span>
+          </div>
+
+          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
+            <div className="flex justify-between items-start mb-4">
+              <span className="text-xs text-gray-500 font-black uppercase tracking-wider">
+                {lang === "en" ? "Collected B2B Revenue" : "المبالغ المحصلة للشركات"}
+              </span>
+              <Building2 className="w-5 h-5 text-[#D30014]" />
+            </div>
+            <p className="text-xl sm:text-2xl lg:text-3xl font-black text-green-400">
+              {localB2BCollected.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
+            </p>
+            <span className="text-xs text-gray-500 font-bold block mt-2">
+              {lang === "en" ? "Target: 28,500,000 IQD" : "المستهدف: 28,500,000 د.ع"}
+            </span>
+          </div>
+
+          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
+            <div className="flex justify-between items-start mb-4">
+              <span className="text-xs text-gray-500 font-black uppercase tracking-wider">
+                {lang === "en" ? "Collected B2C Revenue" : "المبالغ المحصلة للأفراد"}
+              </span>
+              <Users className="w-5 h-5 text-white" />
+            </div>
+            <p className="text-xl sm:text-2xl lg:text-3xl font-black text-green-400">
+              {localB2CCollected.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
+            </p>
+            <span className="text-xs text-gray-500 font-bold block mt-2">
+              {lang === "en" ? "Target: 95,000,000 IQD" : "المستهدف: 95,000,000 د.ع"}
+            </span>
+          </div>
+        </div>
 
         {/* Tab Selection */}
         <div className="flex border-b border-gray-800 mb-8 overflow-x-auto gap-2">
@@ -2462,7 +1955,7 @@ export default function AdminDashboard({
         )}
 
         {/* ----------------- SECTION 1: ANALYTICS TAB ----------------- */}
-        {!isLoading && activeTab === "analytics" && financials && (
+        {!isLoading && activeTab === "analytics" && (
           <div className="space-y-10">
             
             {/* Financial Performance Header */}
@@ -2599,15 +2092,6 @@ export default function AdminDashboard({
 
                 <div className="flex items-center gap-3 flex-wrap">
                   <button
-                    onClick={handleExportFinancialAuditCSV}
-                    className="flex items-center gap-2 px-3.5 py-2 bg-[#1a1a1a] hover:bg-[#252525] border border-gray-800 text-gray-200 rounded-lg text-xs font-bold transition-all active:scale-95 cursor-pointer"
-                    id="export-financial-csv-btn"
-                  >
-                    <Download className="w-4 h-4 text-[#D30014]" />
-                    <span>{lang === "en" ? "Export Financial CSV" : "تصدير التقرير المالي CSV"}</span>
-                  </button>
-
-                  <button
                     onClick={handleExportComprehensiveAnalyticsPDF}
                     className="flex items-center gap-2 px-3.5 py-2 bg-[#D30014] hover:bg-red-700 text-white rounded-lg text-xs font-black transition-all shadow-md active:scale-95 cursor-pointer"
                     id="export-financial-pdf-btn"
@@ -2665,23 +2149,6 @@ export default function AdminDashboard({
               
               <div className="flex items-center gap-3 w-full sm:w-auto justify-end flex-wrap">
                 <button
-                  onClick={() => {
-                    if (activeTab === "members") {
-                      handleExportMembersCSV();
-                    } else if (activeTab === "partners") {
-                      handleExportPartnersCSV();
-                    } else {
-                      handleExportFinancialAuditCSV();
-                    }
-                  }}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] hover:bg-red-700 border border-red-600 text-white font-bold rounded-lg text-xs sm:text-sm transition-all active:scale-95 cursor-pointer shadow-md shadow-red-900/20"
-                  id="export-csv-btn"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>{lang === "en" ? "Export CSV" : "تصدير CSV"}</span>
-                </button>
-
-                <button
                   onClick={handleExportToExcel}
                   className="flex items-center gap-2 px-4 py-2.5 bg-green-700 hover:bg-green-800 border border-green-600 text-white font-bold rounded-lg text-xs sm:text-sm transition-all active:scale-95 cursor-pointer shadow-md shadow-green-900/20"
                 >
@@ -2697,7 +2164,6 @@ export default function AdminDashboard({
                   <span>{lang === "en" ? "Export PDF" : "تصدير PDF"}</span>
                 </button>
 
-                {/* Add Button (Hidden for Read-Only Viewers) */}
                 {!isViewer && (
                   <button
                     onClick={() => {
@@ -2722,7 +2188,6 @@ export default function AdminDashboard({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-2">
               
-              {/* Real-time Text-based Search box */}
               <div className="relative">
                 <Search className="absolute inset-y-0 left-3 my-auto w-4 h-4 text-gray-400" />
                 <input
@@ -2749,7 +2214,6 @@ export default function AdminDashboard({
                 )}
               </div>
 
-              {/* Province filter */}
               <div className="relative">
                 <select
                   value={provinceFilter}
@@ -2765,7 +2229,6 @@ export default function AdminDashboard({
                 </select>
               </div>
 
-              {/* Status filter */}
               <div className="relative">
                 <select
                   value={statusFilter}
@@ -2778,7 +2241,6 @@ export default function AdminDashboard({
                 </select>
               </div>
 
-              {/* Reset filter button */}
               <button
                 onClick={() => {
                   setSearchQuery("");
@@ -2793,7 +2255,6 @@ export default function AdminDashboard({
 
             </div>
 
-            {/* Real-time search/filter results counter banner */}
             {activeTab === "members" && (
               <div className="flex items-center justify-between flex-wrap gap-2 pt-1 text-xs font-medium text-gray-400 border-t border-gray-900">
                 <div className="flex items-center gap-2">
@@ -2945,24 +2406,6 @@ export default function AdminDashboard({
                               ? (lang === "en" ? `No members found matching "${searchQuery}"` : `لم يتم العثور على مشتركين مطابقين لـ "${searchQuery}"`)
                               : (lang === "en" ? "No member records found matching the active filters." : "لا توجد سجلات مشتركين مطابقة للفلاتر المحددة.")}
                           </div>
-                          <p className="text-xs text-gray-500 max-w-sm">
-                            {lang === "en"
-                              ? "Try typing a different member name, Card ID (e.g. BYD-2026-001), or reset your filters."
-                              : "يرجى تجربة البحث باسم آخر أو رقم بطاقة مختلف أو إعادة تعيين الفلاتر."}
-                          </p>
-                          {(searchQuery || provinceFilter !== "All" || statusFilter !== "All") && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSearchQuery("");
-                                setProvinceFilter("All");
-                                setStatusFilter("All");
-                              }}
-                              className="mt-1 px-4 py-2 bg-[#D30014] hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-all cursor-pointer shadow-md shadow-red-900/20"
-                            >
-                              {lang === "en" ? "Reset All Filters" : "إعادة تعيين كافة الفلاتر"}
-                            </button>
-                          )}
                         </div>
                       </td>
                     </tr>
