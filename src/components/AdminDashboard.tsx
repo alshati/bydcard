@@ -602,7 +602,6 @@ export default function AdminDashboard({
     const newStatus = currentActive ? "Inactive" : "Active";
     const updatedMember = { ...member, status: newStatus };
 
-    // 1. التحديث الفوري الموحد في LocalStorage لضمان استجابة باقي مكونات التطبيق
     try {
       const m1 = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
       const m2 = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
@@ -617,7 +616,6 @@ export default function AdminDashboard({
       safeSetLocalStorage("byd-custom-members", JSON.stringify(updatedM1));
       safeSetLocalStorage("BYD_USERS", JSON.stringify(updatedM2));
 
-      // تحديث مصفوفة البطاقات byd-cards إن وجدت
       const cardsList = JSON.parse(localStorage.getItem("byd-cards") || "[]");
       const updatedCards = cardsList.map((c: any) => {
         if (member.cardId && c.cardId && c.cardId.trim().toUpperCase() === member.cardId.trim().toUpperCase()) {
@@ -630,14 +628,11 @@ export default function AdminDashboard({
       console.error("Local storage toggle member sync error:", e);
     }
 
-    // 2. تحديث الحالة في State الواجهة مباشرة
     setMembers(prev => prev.map(m => (m.id === member.id || (member.cardId && m.cardId === member.cardId)) ? updatedMember : m));
     setLocalMembersList(prev => prev.map(m => (m.id === member.id || (member.cardId && m.cardId === member.cardId)) ? updatedMember : m));
 
-    // 3. إشعار النظام بالتغيير
     window.dispatchEvent(new Event("storage-sync-updated"));
 
-    // 4. إرسال التحديث للسيرفر إن كان متاحاً
     try {
       await fetch(`/api/members/${encodeURIComponent(member.id || member.cardId)}`, {
         method: "PUT",
@@ -668,7 +663,6 @@ export default function AdminDashboard({
       provinceAr
     };
 
-    // 1. تحديث الذاكرة المحلية
     try {
       const currentCustom = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
       const currentUsers = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
@@ -689,7 +683,6 @@ export default function AdminDashboard({
       console.error(e);
     }
 
-    // 2. تحديث السيرفر
     const url = editingMember ? `/api/members/${editingMember.id}` : "/api/members";
     const method = editingMember ? "PUT" : "POST";
 
@@ -1021,7 +1014,6 @@ export default function AdminDashboard({
       if (idx > -1) cardsList[idx] = newCard; else cardsList.unshift(newCard);
       safeSetLocalStorage("byd-cards", JSON.stringify(cardsList));
 
-      // تزامن حالة البطاقة مع المشترك إذا كان مرتبطاً بها
       if (cardForm.memberId) {
         const users = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
         const updatedUsers = users.map((u: any) => u.id === cardForm.memberId ? { ...u, status: cardForm.status, cardId: cardForm.cardId } : u);
@@ -1204,7 +1196,7 @@ export default function AdminDashboard({
   const activeLocalMembers = allMembers.filter(isMemberActive);
   const activeLocalPartners = allPartners.filter(isPartnerActive);
 
-  // Live province breakdown & real-time financial stats fallback
+  // Live province breakdown
   const liveProvinceBreakdown = React.useMemo(() => {
     const iraqiProvinces = [
       { en: "Baghdad", ar: "بغداد" }, { en: "Erbil", ar: "أربيل" }, { en: "Basra", ar: "البصرة" },
@@ -1423,7 +1415,7 @@ export default function AdminDashboard({
   const handleExportComprehensiveAnalyticsPDF = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
-      alert(lang === "en" ? "Please allow popups to export the PDF report." : "يرجى السماح بالنوافذ المنبثقة لتصدير ملف الـ PDF");
+      alert(lang === "en" ? "Please allow popups to export PDF." : "يرجى السماح بالنوافذ المنبثقة لتصدير الـ PDF");
       return;
     }
 
@@ -1440,364 +1432,42 @@ export default function AdminDashboard({
     const sixMonthsCount = activeLocalMembers.filter(m => !m.durationMonths || m.durationMonths === 6).length;
     const twelveMonthsCount = activeLocalMembers.filter(m => m.durationMonths === 12).length;
 
-    const sectorStats: { [sector: string]: number } = {};
-    activeLocalPartners.forEach(p => {
-      const s = p.sector || p.sectorAr || "Other";
-      sectorStats[s] = (sectorStats[s] || 0) + 1;
-    });
-
-    const sectorRows = Object.entries(sectorStats).map(([sec, count]) => {
-      const pct = totalPartnersCount > 0 ? ((count / totalPartnersCount) * 100).toFixed(1) : "0";
-      return `
-        <tr>
-          <td style="font-weight: bold;">${sec}</td>
-          <td style="text-align: center; font-weight: bold;">${count}</td>
-          <td style="text-align: right; color: #D30014; font-weight: bold;">${pct}%</td>
-        </tr>
-      `;
-    }).join("");
-
     const provinceRows = liveProvinceBreakdown.map((pb, index) => `
       <tr style="${index % 2 === 1 ? 'background-color: #fafafa;' : ''}">
-        <td style="font-weight: bold;">
-          <span>${pb.province}</span>
-          <span style="color: #666; font-size: 11px; margin-left: 6px;">(${pb.provinceAr})</span>
-        </td>
+        <td style="font-weight: bold;">${pb.province} (${pb.provinceAr})</td>
         <td style="text-align: center; font-weight: bold;">${pb.partners}</td>
         <td style="text-align: center; font-weight: bold;">${pb.users}</td>
-        <td style="text-align: right; color: #444;">${pb.collectedB2B.toLocaleString()} IQD</td>
-        <td style="text-align: right; color: #444;">${pb.collectedB2C.toLocaleString()} IQD</td>
+        <td style="text-align: right;">${pb.collectedB2B.toLocaleString()} IQD</td>
+        <td style="text-align: right;">${pb.collectedB2C.toLocaleString()} IQD</td>
         <td style="text-align: right; font-weight: bold; color: #137333;">${(pb.collectedB2B + pb.collectedB2C).toLocaleString()} IQD</td>
       </tr>
     `).join("");
 
-    const totalProvPartners = liveProvinceBreakdown.reduce((sum, pb) => sum + pb.partners, 0);
-    const totalProvUsers = liveProvinceBreakdown.reduce((sum, pb) => sum + pb.users, 0);
-    const totalProvB2B = liveProvinceBreakdown.reduce((sum, pb) => sum + pb.collectedB2B, 0);
-    const totalProvB2C = liveProvinceBreakdown.reduce((sum, pb) => sum + pb.collectedB2C, 0);
-    const grandProvTotal = totalProvB2B + totalProvB2C;
-
-    const logoHtml = `
-      <div style="display: flex; align-items: center; gap: 14px;">
-        <img src="${systemLogo}" alt="BYD Logo" style="width: 60px; height: 60px; border-radius: 12px; object-fit: cover; border: 2px solid #D30014;" />
-        <div>
-          <div style="font-size: 22px; font-weight: 900; color: #D30014; letter-spacing: 1.5px; line-height: 1.2;">BYD LUXURY VIP NETWORK</div>
-          <div style="font-size: 12px; font-weight: bold; color: #111; margin-top: 3px;">منظومة كارد BYD — تقرير الإحصائيات الشامل والتدقيق المالي والتشغيلي</div>
-          <div style="font-size: 10px; color: #666; font-family: monospace; margin-top: 2px;">AUDIT REF: BYD-STAT-REP-${Date.now().toString(36).toUpperCase()}</div>
-        </div>
-      </div>
-    `;
-
     printWindow.document.write(`
       <!DOCTYPE html>
-      <html dir="ltr">
+      <html>
         <head>
           <meta charset="utf-8" />
-          <title>BYD System Comprehensive Analytics & Statistical Audit Report</title>
+          <title>BYD Comprehensive Analytics Audit Report</title>
           <style>
-            @media print {
-              body { padding: 15px !important; }
-              .no-print { display: none !important; }
-              table { page-break-inside: auto; }
-              tr { page-break-inside: avoid; page-break-after: auto; }
-            }
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-              color: #1a1a1a;
-              background-color: #ffffff;
-              padding: 35px;
-              line-height: 1.45;
-              font-size: 12px;
-            }
-            .header-box {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              border-bottom: 3px solid #D30014;
-              padding-bottom: 16px;
-              margin-bottom: 24px;
-            }
-            .report-meta { text-align: right; }
-            .badge-certified {
-              display: inline-block;
-              background-color: #111;
-              color: #fff;
-              font-size: 10px;
-              font-weight: 900;
-              padding: 4px 10px;
-              border-radius: 4px;
-              letter-spacing: 1px;
-              text-transform: uppercase;
-              margin-bottom: 4px;
-            }
-            .kpi-grid {
-              display: grid;
-              grid-template-columns: repeat(4, 1fr);
-              gap: 14px;
-              margin-bottom: 24px;
-            }
-            .kpi-card {
-              background-color: #f8f9fa;
-              border: 1px solid #e9ecef;
-              border-radius: 10px;
-              padding: 14px;
-              box-sizing: border-box;
-            }
-            .kpi-card.highlight {
-              background-color: #fff5f5;
-              border-color: #fed7d7;
-            }
-            .kpi-title {
-              font-size: 10px;
-              font-weight: bold;
-              text-transform: uppercase;
-              color: #6c757d;
-              letter-spacing: 0.5px;
-              margin-bottom: 6px;
-            }
-            .kpi-value {
-              font-size: 18px;
-              font-weight: 900;
-              color: #111;
-            }
-            .kpi-sub {
-              font-size: 10px;
-              color: #888;
-              margin-top: 4px;
-              font-weight: 600;
-            }
-            .section-title {
-              font-size: 13px;
-              font-weight: 900;
-              color: #111;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-              margin-top: 24px;
-              margin-bottom: 12px;
-              display: flex;
-              align-items: center;
-              gap: 8px;
-              border-left: 4px solid #D30014;
-              padding-left: 8px;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-bottom: 20px;
-              font-size: 11.5px;
-            }
-            th {
-              background-color: #1a1a1a;
-              color: #ffffff;
-              padding: 9px 12px;
-              font-size: 10.5px;
-              font-weight: 800;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-            }
-            td {
-              padding: 8px 12px;
-              border-bottom: 1px solid #e9ecef;
-            }
-            .total-row td {
-              background-color: #f1f3f5;
-              font-weight: 900;
-              border-top: 2px solid #111;
-              border-bottom: 2px solid #111;
-            }
-            .two-col-grid {
-              display: grid;
-              grid-template-columns: 1fr 1fr;
-              gap: 20px;
-              margin-bottom: 20px;
-            }
-            .sign-grid {
-              display: grid;
-              grid-template-columns: 1fr 1fr 1fr;
-              gap: 20px;
-              margin-top: 35px;
-              padding-top: 20px;
-              border-top: 1px solid #dee2e6;
-            }
-            .sign-box {
-              text-align: center;
-              padding: 10px;
-              background-color: #fafafa;
-              border: 1px dashed #ced4da;
-              border-radius: 8px;
-            }
-            .sign-box h5 {
-              margin: 0 0 6px 0;
-              font-size: 11px;
-              font-weight: 800;
-              color: #111;
-            }
-            .sign-box p {
-              margin: 0;
-              font-size: 9.5px;
-              color: #777;
-            }
-            .sign-placeholder {
-              height: 40px;
-              border-bottom: 1px solid #111;
-              margin: 10px 20px;
-            }
-            .footer-notes {
-              text-align: center;
-              font-size: 9.5px;
-              color: #999;
-              margin-top: 30px;
-            }
+            body { font-family: sans-serif; padding: 20px; color: #111; }
+            h1 { color: #D30014; }
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+            th, td { border: 1px solid #ddd; padding: 8px; font-size: 12px; }
+            th { background-color: #111; color: #fff; }
           </style>
         </head>
         <body>
-          <div class="header-box">
-            ${logoHtml}
-            <div class="report-meta">
-              <div class="badge-certified">OFFICIAL EXECUTIVE AUDIT</div>
-              <div style="font-size: 11px; font-weight: bold; color: #333; margin-top: 2px;">Date: ${new Date().toLocaleDateString()}</div>
-              <div style="font-size: 10px; color: #777;">Operator: ${userName || "Master Admin"}</div>
-            </div>
-          </div>
-
-          <div class="kpi-grid">
-            <div class="kpi-card highlight">
-              <div class="kpi-title">Gross Revenue (IQD)</div>
-              <div class="kpi-value" style="color: #D30014;">${totalGrossRevenue.toLocaleString()} IQD</div>
-              <div class="kpi-sub">Target: ${totalTargetRevenue.toLocaleString()} IQD (${achievementPercent}%)</div>
-            </div>
-
-            <div class="kpi-card">
-              <div class="kpi-title">B2B Corporate Revenue</div>
-              <div class="kpi-value" style="color: #137333;">${totalCollectedB2B.toLocaleString()} IQD</div>
-              <div class="kpi-sub">${totalPartnersCount} Active Registered Companies</div>
-            </div>
-
-            <div class="kpi-card">
-              <div class="kpi-title">B2C Members Revenue</div>
-              <div class="kpi-value" style="color: #1a73e8;">${totalCollectedB2C.toLocaleString()} IQD</div>
-              <div class="kpi-sub">${totalMembersCount} Active Subscribers</div>
-            </div>
-
-            <div class="kpi-card">
-              <div class="kpi-title">National Iraq Coverage</div>
-              <div class="kpi-value">19 Provinces</div>
-              <div class="kpi-sub">100% Active Node</div>
-            </div>
-          </div>
-
-          <div class="two-col-grid">
-            <div>
-              <div class="section-title">B2C Subscription Plans Breakdown</div>
-              <table>
-                <thead>
-                  <tr>
-                    <th style="text-align: left;">Plan Type</th>
-                    <th style="text-align: center;">Members Count</th>
-                    <th style="text-align: right;">Unit Fee</th>
-                    <th style="text-align: right;">Total IQD</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td><strong>6-Month Plan (VIP)</strong></td>
-                    <td style="text-align: center; font-weight: bold;">${sixMonthsCount}</td>
-                    <td style="text-align: right;">25,000 IQD</td>
-                    <td style="text-align: right; font-weight: bold;">${(sixMonthsCount * 25000).toLocaleString()} IQD</td>
-                  </tr>
-                  <tr>
-                    <td><strong>12-Month Plan (Annual VIP)</strong></td>
-                    <td style="text-align: center; font-weight: bold;">${twelveMonthsCount}</td>
-                    <td style="text-align: right;">50,000 IQD</td>
-                    <td style="text-align: right; font-weight: bold;">${(twelveMonthsCount * 50000).toLocaleString()} IQD</td>
-                  </tr>
-                  <tr class="total-row">
-                    <td>Total B2C</td>
-                    <td style="text-align: center;">${totalMembersCount}</td>
-                    <td>-</td>
-                    <td style="text-align: right; color: #1a73e8;">${totalCollectedB2C.toLocaleString()} IQD</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <div>
-              <div class="section-title">B2B Corporate Sectors Distribution</div>
-              <table>
-                <thead>
-                  <tr>
-                    <th style="text-align: left;">Commercial Sector</th>
-                    <th style="text-align: center;">Partners Count</th>
-                    <th style="text-align: right;">Share %</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${sectorRows || '<tr><td colspan="3" style="text-align:center; color:#999;">No partners registered yet</td></tr>'}
-                  <tr class="total-row">
-                    <td>Total B2B Partners</td>
-                    <td style="text-align: center;">${totalPartnersCount}</td>
-                    <td style="text-align: right;">100%</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="section-title">Geographical Distribution Across Iraq Governorates (19 Provinces)</div>
+          <h1>BYD LUXURY VIP NETWORK — Audit Report</h1>
+          <p>Generated: ${new Date().toLocaleString()}</p>
+          <p>Gross Revenue: ${totalGrossRevenue.toLocaleString()} IQD (${achievementPercent}% of Target)</p>
           <table>
             <thead>
-              <tr>
-                <th style="text-align: left;">Province / المحافظة</th>
-                <th style="text-align: center;">B2B Partners</th>
-                <th style="text-align: center;">B2C Members</th>
-                <th style="text-align: right;">Collected B2B</th>
-                <th style="text-align: right;">Collected B2C</th>
-                <th style="text-align: right;">Total Revenue (IQD)</th>
-              </tr>
+              <tr><th>Province</th><th>Partners</th><th>Members</th><th>B2B Rev</th><th>B2C Rev</th><th>Total</th></tr>
             </thead>
-            <tbody>
-              ${provinceRows}
-              <tr class="total-row">
-                <td>GRAND TOTAL (الإجمالي العام)</td>
-                <td style="text-align: center;">${totalProvPartners}</td>
-                <td style="text-align: center;">${totalProvUsers}</td>
-                <td style="text-align: right;">${totalProvB2B.toLocaleString()} IQD</td>
-                <td style="text-align: right;">${totalProvB2C.toLocaleString()} IQD</td>
-                <td style="text-align: right; color: #D30014; font-size: 12.5px;">${grandProvTotal.toLocaleString()} IQD</td>
-              </tr>
-            </tbody>
+            <tbody>${provinceRows}</tbody>
           </table>
-
-          <div class="sign-grid">
-            <div class="sign-box">
-              <h5>BYD Platform Administration</h5>
-              <p>إدارة منظومة كارد BYD المعتمدة</p>
-              <div class="sign-placeholder"></div>
-              <p>Authorized Signature & Stamp</p>
-            </div>
-            <div class="sign-box">
-              <h5>GeniusWings Group</h5>
-              <p>أجنحة العبقرية للنظم والحلول الرقمية</p>
-              <div class="sign-placeholder"></div>
-              <p>Technical & Operations Audit</p>
-            </div>
-            <div class="sign-box">
-              <h5>TAJ Marketing & Production</h5>
-              <p>شركة تاج للتسويق والإنتاج</p>
-              <div class="sign-placeholder"></div>
-              <p>Commercial & Partnership Dept</p>
-            </div>
-          </div>
-
-          <div class="footer-notes">
-            This document is a certified system-generated audit ledger from the BYD VIP System Infrastructure. Confidential & Proprietary &copy; 2026.
-          </div>
-
-          <script>
-            window.onload = function() {
-              window.print();
-            }
-          </script>
+          <script>window.onload = function() { window.print(); }</script>
         </body>
       </html>
     `);
@@ -1811,225 +1481,44 @@ export default function AdminDashboard({
     }
 
     const isMembers = activeTab === "members";
-    const title = isMembers 
-      ? (lang === "en" ? "BYD VIP B2C Members Registry Ledger" : "سجل المشتركين الفرديين BYD VIP B2C")
-      : (lang === "en" ? "BYD Commercial Partner Registry Ledger" : "سجل الشركاء التجاريين المعتمدين BYD");
+    const title = isMembers ? "BYD VIP B2C Members Registry" : "BYD Commercial Partners Registry";
 
     const printWindow = window.open("", "_blank");
-    if (!printWindow) {
-      alert(lang === "en" ? "Please allow popups to export the PDF report." : "يرجى السماح بالنوافذ المنبثقة لتصدير ملف الـ PDF");
-      return;
-    }
+    if (!printWindow) return;
 
     const dataRows = isMembers ? filteredMembers : filteredPartners;
 
-    let tableHeaders = "";
-    let tableRows = "";
-
-    if (isMembers) {
-      tableHeaders = `
-        <th style="text-align: left;">Full Name</th>
-        <th style="text-align: left;">Card ID</th>
-        <th style="text-align: left;">Province</th>
-        <th style="text-align: left;">Reg Date</th>
-        <th style="text-align: left;">Expiry Date</th>
-        <th style="text-align: left;">Status</th>
-        <th style="text-align: left;">Fee (IQD)</th>
-      `;
-      tableRows = (dataRows as Member[]).map(m => `
-        <tr>
-          <td>
-            <div style="font-weight: bold;">${m.fullName || ""}</div>
-            <div style="font-size: 10px; color: #666;">${m.fullNameAr || ""}</div>
-          </td>
-          <td style="font-family: monospace; font-weight: bold;">${m.cardId || "Unassigned"}</td>
-          <td>${m.province || m.provinceAr || ""}</td>
-          <td>${m.registrationDate || ""}</td>
-          <td>${m.expiryDate || ""}</td>
-          <td>
-            <span style="padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; background-color: ${isMemberActive(m) ? '#e6f4ea' : '#fce8e6'}; color: ${isMemberActive(m) ? '#137333' : '#c5221f'};">
-              ${isMemberActive(m) ? "Active" : "Inactive"}
-            </span>
-          </td>
-          <td style="font-weight: bold;">${(m.feePaidIqd !== undefined ? m.feePaidIqd : 25000).toLocaleString()} IQD</td>
-        </tr>
-      `).join("");
-    } else {
-      tableHeaders = `
-        <th style="text-align: left;">Company Name</th>
-        <th style="text-align: left;">Sector</th>
-        <th style="text-align: left;">Province</th>
-        <th style="text-align: left;">Expiry Date</th>
-        <th style="text-align: left;">Status</th>
-        <th style="text-align: left;">Discount</th>
-        <th style="text-align: left;">Phone</th>
-      `;
-      tableRows = (dataRows as any[]).map(p => `
-        <tr>
-          <td>
-            <div style="font-weight: bold;">${p.companyName || ""}</div>
-            <div style="font-size: 10px; color: #666;">${p.companyNameAr || ""}</div>
-          </td>
-          <td>${p.sector || ""}</td>
-          <td>${p.province || p.provinceAr || ""}</td>
-          <td>${p.expiryDate || ""}</td>
-          <td>
-            <span style="padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; background-color: ${isPartnerActive(p) ? '#e6f4ea' : '#fce8e6'}; color: ${isPartnerActive(p) ? '#137333' : '#c5221f'};">
-              ${isPartnerActive(p) ? "Active" : "Inactive"}
-            </span>
-          </td>
-          <td style="font-weight: bold; color: #D30014;">${p.discount || "10%"}</td>
-          <td>${p.phone || ""}</td>
-        </tr>
-      `).join("");
-    }
-
-    const totalCount = dataRows.length;
-    const totalRevenue = isMembers 
-      ? (dataRows as Member[]).reduce((sum, m) => sum + (m.feePaidIqd !== undefined ? m.feePaidIqd : 25000), 0)
-      : (dataRows as Partner[]).reduce((sum, p) => sum + (p.feePaidIqd !== undefined ? p.feePaidIqd : 150000), 0);
-
-    const logoHtml = `
-      <div style="display: flex; align-items: center; gap: 14px;">
-        <img src="${systemLogo}" alt="BYD Logo" style="width: 56px; height: 56px; border-radius: 10px; object-fit: cover; border: 2px solid #D30014;" />
-        <div>
-          <div style="font-size: 20px; font-weight: 900; color: #D30014; letter-spacing: 1.5px; line-height: 1.2;">BYD LUXURY VIP NETWORK</div>
-          <div style="font-size: 11px; font-weight: bold; color: #111;">${isMembers ? "سجل المشتركين الفرديين B2C" : "سجل الشركاء التجاريين B2B"}</div>
-        </div>
-      </div>
-    `;
+    let tableRows = isMembers 
+      ? (dataRows as Member[]).map(m => `
+          <tr>
+            <td>${m.fullName} (${m.fullNameAr})</td>
+            <td>${m.cardId}</td>
+            <td>${m.province}</td>
+            <td>${m.registrationDate}</td>
+            <td>${m.expiryDate}</td>
+            <td>${isMemberActive(m) ? 'Active' : 'Inactive'}</td>
+          </tr>
+        `).join("")
+      : (dataRows as Partner[]).map(p => `
+          <tr>
+            <td>${p.companyName} (${p.companyNameAr})</td>
+            <td>${p.sector}</td>
+            <td>${p.province}</td>
+            <td>${p.expiryDate}</td>
+            <td>${isPartnerActive(p) ? 'Active' : 'Inactive'}</td>
+          </tr>
+        `).join("");
 
     printWindow.document.write(`
       <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>${title}</title>
-          <style>
-            @media print {
-              body { padding: 20px !important; }
-              table { page-break-inside: auto; }
-              tr { page-break-inside: avoid; page-break-after: auto; }
-            }
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-              color: #333;
-              padding: 40px;
-              line-height: 1.5;
-            }
-            .header-container {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              border-bottom: 3px solid #D30014;
-              padding-bottom: 20px;
-              margin-bottom: 30px;
-            }
-            .report-title {
-              font-size: 16px;
-              font-weight: bold;
-              text-align: right;
-            }
-            .meta-grid {
-              display: grid;
-              grid-template-columns: repeat(4, 1fr);
-              gap: 20px;
-              margin-bottom: 30px;
-              background-color: #f9f9f9;
-              padding: 20px;
-              border-radius: 8px;
-              border: 1px solid #eee;
-            }
-            .meta-card h4 {
-              margin: 0;
-              font-size: 11px;
-              color: #777;
-              text-transform: uppercase;
-              letter-spacing: 1px;
-            }
-            .meta-card p {
-              margin: 5px 0 0 0;
-              font-size: 18px;
-              font-weight: bold;
-              color: #111;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-bottom: 30px;
-            }
-            th {
-              background-color: #111;
-              color: white;
-              text-align: left;
-              padding: 12px 15px;
-              font-size: 12px;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-            }
-            td {
-              padding: 12px 15px;
-              border-bottom: 1px solid #eee;
-              font-size: 13px;
-            }
-            tr:nth-child(even) { background-color: #fcfcfc; }
-            .footer-legal {
-              text-align: center;
-              font-size: 10px;
-              color: #999;
-              margin-top: 50px;
-              border-top: 1px solid #eee;
-              padding-top: 20px;
-            }
-          </style>
-        </head>
+        <head><title>${title}</title><style>body{font-family:sans-serif;padding:20px;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;font-size:12px;}</style></head>
         <body>
-          <div class="header-container">
-            ${logoHtml}
-            <div class="report-title">
-              <div>${title}</div>
-              <div style="font-size: 11px; font-weight: normal; color: #666; margin-top: 4px;">Generated: ${new Date().toLocaleString()}</div>
-            </div>
-          </div>
-
-          <div class="meta-grid">
-            <div class="meta-card">
-              <h4>Total Record Count</h4>
-              <p>${totalCount} Records</p>
-            </div>
-            <div class="meta-card">
-              <h4>Aggregated Revenue</h4>
-              <p>${totalRevenue.toLocaleString()} IQD</p>
-            </div>
-            <div class="meta-card">
-              <h4>Portal Integrity</h4>
-              <p>100% Certified</p>
-            </div>
-            <div class="meta-card">
-              <h4>System Node</h4>
-              <p>BYD-NODE-LIVE</p>
-            </div>
-          </div>
-
+          <h2>${title}</h2>
           <table>
-            <thead>
-              <tr>
-                ${tableHeaders}
-              </tr>
-            </thead>
-            <tbody>
-              ${tableRows}
-            </tbody>
+            <thead><tr><th>Name</th><th>ID/Sector</th><th>Province</th><th>Reg Date</th><th>Exp Date</th><th>Status</th></tr></thead>
+            <tbody>${tableRows}</tbody>
           </table>
-
-          <div class="footer-legal">
-            BYD Luxury Membership Network & Corporate Partnership Systems &copy; 2026.
-          </div>
-
-          <script>
-            window.onload = function() {
-              window.print();
-            }
-          </script>
+          <script>window.onload = function() { window.print(); }</script>
         </body>
       </html>
     `);
@@ -2038,44 +1527,29 @@ export default function AdminDashboard({
 
   const handleExportToExcel = () => {
     if (activeTab === "members") {
-      const data = filteredMembers.map(m => {
-        const isOneYear = m.durationMonths === 12 || m.feePaidIqd === 50000;
-        return {
-          "الاسم (إنجليزي)": m.fullName || "",
-          "الاسم (عربي)": m.fullNameAr || "",
-          "رقم البطاقة": m.cardId || "",
-          "المحافظة (EN)": m.province || "",
-          "المحافظة (AR)": m.provinceAr || "",
-          "مدة الاشتراك": isOneYear ? "سنة واحدة" : "6 أشهر",
-          "تاريخ التسجيل": m.registrationDate || "",
-          "تاريخ الانتهاء": m.expiryDate || "",
-          "الحالة": isMemberActive(m) ? "نشط (Active)" : "غير نشط (Inactive)",
-          "المبلغ المدفوع (د.ع)": m.feePaidIqd !== undefined ? m.feePaidIqd : (isOneYear ? 50000 : 25000),
-          "أقرب نقطة دالة": m.nearestLandmark || ""
-        };
-      });
-
+      const data = filteredMembers.map(m => ({
+        "الاسم (إنجليزي)": m.fullName || "",
+        "الاسم (عربي)": m.fullNameAr || "",
+        "رقم البطاقة": m.cardId || "",
+        "المحافظة": m.province || "",
+        "تاريخ الانتهاء": m.expiryDate || "",
+        "الحالة": isMemberActive(m) ? "نشط" : "غير نشط"
+      }));
       const worksheet = XLSX.utils.json_to_sheet(data);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "المشتركين B2C");
-      XLSX.writeFile(workbook, `byd_members_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      XLSX.utils.book_append_sheet(workbook, worksheet, "B2C Members");
+      XLSX.writeFile(workbook, `byd_members_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } else if (activeTab === "partners") {
       const data = filteredPartners.map(p => ({
-        "اسم الشركة (EN)": p.companyName || "",
-        "اسم الشركة (AR)": p.companyNameAr || "",
+        "اسم الشركة": p.companyName || "",
         "القطاع": p.sector || "",
         "المحافظة": p.province || "",
-        "تاريخ الانتهاء": p.expiryDate || "",
-        "الحالة": isPartnerActive(p) ? "نشط (Active)" : "غير نشط (Inactive)",
-        "المبلغ المدفوع (د.ع)": p.feePaidIqd !== undefined ? p.feePaidIqd : 150000,
-        "البريد الإلكتروني": p.email || "",
-        "رقم الهاتف": p.phone || ""
+        "الحالة": isPartnerActive(p) ? "نشط" : "غير نشط"
       }));
-
       const worksheet = XLSX.utils.json_to_sheet(data);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "الشركاء B2B");
-      XLSX.writeFile(workbook, `byd_partners_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      XLSX.utils.book_append_sheet(workbook, worksheet, "B2B Partners");
+      XLSX.writeFile(workbook, `byd_partners_${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
   };
 
@@ -2084,279 +1558,125 @@ export default function AdminDashboard({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Header control line */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 pb-6 border-b border-gray-900 mb-8" id="admin-header">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 pb-6 border-b border-gray-900 mb-8">
           <div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-2">
               <span className="w-2.5 h-6 bg-[#D30014] rounded-sm"></span>
               {t.adminHeader}
             </h1>
             <p className="text-xs sm:text-sm text-gray-500 font-semibold uppercase tracking-wider mt-1">
-              {lang === "en" ? "Secure BYD Card Administrative Control Panel" : "لوحة التحكم الإدارية والمالية لـ كارد BYD"}
+              لوحة التحكم الإدارية والمالية لـ كارد BYD
             </p>
           </div>
           
           <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-start lg:justify-end">
-            <button
-              onClick={onGoBack}
-              className="flex items-center gap-2 px-3.5 py-2 bg-[#121212] hover:bg-[#1a1a1a] border border-gray-800 rounded-lg text-xs sm:text-sm font-bold text-gray-300 transition-all active:scale-95"
-            >
-              <ArrowLeft className={`w-4 h-4 text-[#D30014] ${lang === "ar" ? "rotate-180" : ""}`} />
-              <span>{lang === "en" ? "Public Site" : "الموقع العام"}</span>
+            <button onClick={onGoBack} className="flex items-center gap-2 px-3.5 py-2 bg-[#121212] border border-gray-800 rounded-lg text-xs font-bold text-gray-300">
+              <ArrowLeft className="w-4 h-4 text-[#D30014]" />
+              <span>الموقع العام</span>
             </button>
-
-            <button
-              onClick={() => setLang(lang === "en" ? "ar" : "en")}
-              className="flex items-center gap-2 px-3.5 py-2 bg-[#121212] hover:bg-[#1a1a1a] border border-gray-800 rounded-lg text-xs sm:text-sm font-bold text-gray-300 transition-all active:scale-95"
-            >
+            <button onClick={() => setLang(lang === "en" ? "ar" : "en")} className="flex items-center gap-2 px-3.5 py-2 bg-[#121212] border border-gray-800 rounded-lg text-xs font-bold text-gray-300">
               <Languages className="w-4 h-4 text-[#D30014]" />
               <span>{t.langToggle}</span>
             </button>
-
-            <button
-              onClick={loadAllData}
-              className="p-2 bg-[#121212] hover:bg-[#1f1f1f] border border-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
-              title="Reload Data"
-            >
+            <button onClick={loadAllData} className="p-2 bg-[#121212] border border-gray-800 rounded-lg text-gray-400 hover:text-white">
               <RefreshCw className="w-5 h-5" />
             </button>
-
             {!isViewer && (
-              <button
-                onClick={handleClearAllData}
-                className="flex items-center gap-2 px-3.5 py-2 bg-red-500/10 hover:bg-red-600 border border-red-500/20 text-red-500 hover:text-white rounded-lg text-xs sm:text-sm font-bold transition-all active:scale-95 cursor-pointer"
-                title={(t as any).clearAllBtn || "Clear All Data"}
-              >
+              <button onClick={handleClearAllData} className="flex items-center gap-2 px-3.5 py-2 bg-red-500/10 border border-red-500/20 text-red-500 hover:text-white rounded-lg text-xs font-bold">
                 <Trash2 className="w-4 h-4" />
-                <span>{(t as any).clearAllBtn || "Clear All Data"}</span>
+                <span>مسح الكل</span>
               </button>
             )}
-
-            <button
-              onClick={onLogout}
-              className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-[#D30014] hover:text-white border border-red-500/20 text-red-500 rounded-lg text-xs sm:text-sm font-bold transition-all cursor-pointer"
-            >
+            <button onClick={onLogout} className="flex items-center gap-2 px-4 py-2 bg-red-500/10 border border-red-500/20 text-red-500 rounded-lg text-xs font-bold">
               <LogOut className="w-4 h-4" />
               <span>{t.adminLogout}</span>
             </button>
           </div>
         </div>
 
-        {/* AUDITOR READ-ONLY BANNER */}
-        {isViewer && (
-          <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-2xl p-4 sm:p-5 mb-8 shadow-xl">
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div className="flex items-center gap-3.5">
-                <div className="w-11 h-11 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
-                  <Eye className="w-6 h-6 animate-pulse" />
-                </div>
-                <div>
-                  <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2.5 flex-wrap">
-                    <span>{lang === "en" ? "Auditor Mode (Read-Only & Printing)" : "نظام المراقبة والتدقيق (صلاحية الاطلاع والطباعة فقط)"}</span>
-                    <span className="px-2.5 py-0.5 text-xs bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full font-bold uppercase">
-                      {userName || (lang === "en" ? "Auditor" : "مراقب معتمد")}
-                    </span>
-                  </h3>
-                  <p className="text-xs sm:text-sm text-amber-200/80 mt-1 max-w-3xl leading-relaxed">
-                    {lang === "en" 
-                      ? "You are logged in with an authorized monitoring account. You have full access to inspect financial statistics and export reports." 
-                      : "أنت مسجل الدخول بحساب تدقيق ومراقبة معتمد. يتيح لك النظام الاطلاع الكامل على الإحصائيات والبيانات المالية وتصدير التقارير."}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Top summary cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md">
+          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
             <div className="flex justify-between items-start mb-4">
               <span className="text-xs text-gray-500 font-black uppercase tracking-wider">{t.tblFullName} (B2C)</span>
               <Users className="w-5 h-5 text-[#D30014]" />
             </div>
             <p className="text-3xl font-black text-white">{activeLocalMembers.length}</p>
-            <span className="text-xs text-gray-500 font-bold block mt-2">Target: 1,900 Users</span>
           </div>
 
-          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md">
+          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
             <div className="flex justify-between items-start mb-4">
               <span className="text-xs text-gray-500 font-black uppercase tracking-wider">{t.tblCompanyName} (B2B)</span>
               <Building2 className="w-5 h-5 text-white" />
             </div>
             <p className="text-3xl font-black text-white">{activeLocalPartners.length}</p>
-            <span className="text-xs text-gray-500 font-bold block mt-2">Target: 190 Partners</span>
           </div>
 
-          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md">
+          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
             <div className="flex justify-between items-start mb-4">
-              <span className="text-xs text-gray-500 font-black uppercase tracking-wider">
-                {lang === "en" ? "Collected B2B Revenue" : "المبالغ المحصلة للشركات"}
-              </span>
+              <span className="text-xs text-gray-500 font-black uppercase tracking-wider">المبالغ المحصلة للشركات</span>
               <Building2 className="w-5 h-5 text-[#D30014]" />
             </div>
-            <p className="text-xl sm:text-2xl lg:text-3xl font-black text-green-400">
-              {localB2BCollected.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
-            </p>
-            <span className="text-xs text-gray-500 font-bold block mt-2">
-              {lang === "en" ? "Target: 28,500,000 IQD" : "المستهدف: 28,500,000 د.ع"}
-            </span>
+            <p className="text-2xl font-black text-green-400">{localB2BCollected.toLocaleString()} IQD</p>
           </div>
 
-          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md">
+          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
             <div className="flex justify-between items-start mb-4">
-              <span className="text-xs text-gray-500 font-black uppercase tracking-wider">
-                {lang === "en" ? "Collected B2C Revenue" : "المبالغ المحصلة للأفراد"}
-              </span>
+              <span className="text-xs text-gray-500 font-black uppercase tracking-wider">المبالغ المحصلة للأفراد</span>
               <Users className="w-5 h-5 text-white" />
             </div>
-            <p className="text-xl sm:text-2xl lg:text-3xl font-black text-green-400">
-              {localB2CCollected.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
-            </p>
-            <span className="text-xs text-gray-500 font-bold block mt-2">
-              {lang === "en" ? "Target: 95,000,000 IQD" : "المستهدف: 95,000,000 د.ع"}
-            </span>
+            <p className="text-2xl font-black text-green-400">{localB2CCollected.toLocaleString()} IQD</p>
           </div>
         </div>
 
         {/* Tab Selection */}
         <div className="flex border-b border-gray-800 mb-8 overflow-x-auto gap-2">
-          <button
-            onClick={() => { setActiveTab("analytics"); setSearchQuery(""); }}
-            className={`px-5 py-3 text-sm sm:text-base font-black border-b-2 transition-all shrink-0 cursor-pointer ${
-              activeTab === "analytics" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500 hover:text-gray-300"
-            }`}
-          >
-            {t.dashboardTab}
-          </button>
-          <button
-            onClick={() => { setActiveTab("members"); setSearchQuery(""); }}
-            className={`px-5 py-3 text-sm sm:text-base font-black border-b-2 transition-all shrink-0 cursor-pointer ${
-              activeTab === "members" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500 hover:text-gray-300"
-            }`}
-          >
-            {t.membersTab}
-          </button>
-          <button
-            onClick={() => { setActiveTab("partners"); setSearchQuery(""); }}
-            className={`px-5 py-3 text-sm sm:text-base font-black border-b-2 transition-all shrink-0 cursor-pointer ${
-              activeTab === "partners" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500 hover:text-gray-300"
-            }`}
-          >
-            {t.partnersTab}
-          </button>
-          <button
-            onClick={() => { setActiveTab("branding"); setSearchQuery(""); }}
-            className={`px-5 py-3 text-sm sm:text-base font-black border-b-2 transition-all shrink-0 cursor-pointer ${
-              activeTab === "branding" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500 hover:text-gray-300"
-            }`}
-          >
-            {lang === "en" ? "Owning Companies" : "الشركات المالكة"}
-          </button>
-          <button
-            onClick={() => { setActiveTab("cards"); setSearchQuery(""); }}
-            className={`px-5 py-3 text-sm sm:text-base font-black border-b-2 transition-all shrink-0 cursor-pointer ${
-              activeTab === "cards" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500 hover:text-gray-300"
-            }`}
-          >
-            {lang === "en" ? "Card Assets" : "إدارة البطاقات"}
-          </button>
-          
-          {!isViewer && (
+          {["analytics", "members", "partners", "branding", "cards"].map((tab) => (
             <button
-              onClick={() => { setActiveTab("viewers"); setSearchQuery(""); }}
-              className={`px-5 py-3 text-sm sm:text-base font-black border-b-2 transition-all shrink-0 cursor-pointer flex items-center gap-2 ${
-                activeTab === "viewers" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500 hover:text-gray-300"
+              key={tab}
+              onClick={() => { setActiveTab(tab as any); setSearchQuery(""); }}
+              className={`px-5 py-3 text-sm font-black border-b-2 transition-all cursor-pointer ${
+                activeTab === tab ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500"
               }`}
             >
-              <Eye className="w-4 h-4 text-[#D30014]" />
-              <span>{lang === "en" ? "Auditor Accounts" : "حسابات المراقبة والتدقيق"}</span>
+              {tab === "analytics" ? t.dashboardTab : tab === "members" ? t.membersTab : tab === "partners" ? t.partnersTab : tab === "branding" ? "الشركات المالكة" : "إدارة البطاقات"}
             </button>
-          )}
+          ))}
         </div>
 
-        {/* LOADING INDICATOR */}
-        {isLoading && (
-          <div className="py-20 text-center">
-            <div className="w-10 h-10 border-4 border-[#D30014]/30 border-t-[#D30014] rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-500 font-bold tracking-wider">Syncing Secure Database Ledger...</p>
-          </div>
-        )}
-
-        {/* ----------------- SECTION 1: ANALYTICS TAB ----------------- */}
-        {!isLoading && activeTab === "analytics" && (
+        {/* ANALYTICS TAB */}
+        {activeTab === "analytics" && (
           <div className="space-y-10">
-            
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#121212] border border-gray-800/80 rounded-2xl p-5 shadow-lg">
-              <div>
-                <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5">
-                  <span className="w-2.5 h-6 bg-[#D30014] rounded-sm"></span>
-                  {t.finTitle}
-                </h2>
-                <p className="text-xs sm:text-sm text-gray-400 mt-1">{t.finSubtitle}</p>
-              </div>
-
-              <button
-                onClick={handleExportComprehensiveAnalyticsPDF}
-                className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] hover:bg-[#b00010] border border-[#D30014] text-white font-black rounded-xl text-xs sm:text-sm transition-all shadow-md cursor-pointer"
-              >
-                <FileText className="w-4 h-4" />
-                <span>{lang === "en" ? "Export Comprehensive Statistics PDF" : "تصدير تقرير الإحصائيات الشامل PDF"}</span>
-              </button>
-            </div>
-
-            {/* Target Breakdown & Comparison Bar chart */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
-                <h3 className="text-lg font-black text-white mb-6 flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-[#D30014]" />
-                  {lang === "en" ? "Revenue Breakdown vs Target" : "مقارنة المبالغ المحصلة مقابل المستهدفة"}
-                </h3>
+                <h3 className="text-lg font-black text-white mb-6">مقارنة المبالغ المحصلة مقابل المستهدفة</h3>
                 <div className="h-80 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <RechartsBarChart
-                      data={getRevenueComparisonData()}
-                      margin={{ top: 20, right: 30, left: 10, bottom: 5 }}
-                    >
+                    <RechartsBarChart data={getRevenueComparisonData()}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#222" />
                       <XAxis dataKey="name" stroke="#999" fontSize={12} />
                       <YAxis stroke="#999" fontSize={12} />
                       <Tooltip contentStyle={{ backgroundColor: "#111", border: "1px solid #333", color: "#fff" }} />
                       <Legend />
-                      <Bar dataKey="Collected" fill="#D30014" name={lang === "en" ? "Collected (IQD)" : "المحصل (د.ع)"} />
-                      <Bar dataKey="Target" fill="#444" name={lang === "en" ? "Target (IQD)" : "المستهدف (د.ع)"} />
+                      <Bar dataKey="Collected" fill="#D30014" name="المحصل (د.ع)" />
+                      <Bar dataKey="Target" fill="#444" name="المستهدف (د.ع)" />
                     </RechartsBarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
 
               <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
-                <h3 className="text-lg font-black text-white mb-6 flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-white" />
-                  {t.finGrowthTrend}
-                </h3>
+                <h3 className="text-lg font-black text-white mb-6">{t.finGrowthTrend}</h3>
                 <div className="h-80 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                      data={getLiveMonthlyTrend()}
-                      margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                    >
-                      <defs>
-                        <linearGradient id="colorB2C" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#D30014" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#D30014" stopOpacity={0}/>
-                        </linearGradient>
-                        <linearGradient id="colorB2B" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#8884d8" stopOpacity={0.4}/>
-                          <stop offset="95%" stopColor="#8884d8" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
+                    <AreaChart data={getLiveMonthlyTrend()}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#222" />
                       <XAxis dataKey="month" stroke="#999" fontSize={12} />
                       <YAxis stroke="#999" fontSize={12} />
                       <Tooltip contentStyle={{ backgroundColor: "#111", border: "1px solid #333", color: "#fff" }} />
                       <Legend />
-                      <Area type="monotone" dataKey="b2c" stroke="#D30014" fillOpacity={1} fill="url(#colorB2C)" name="B2C (Members)" />
-                      <Area type="monotone" dataKey="b2b" stroke="#8884d8" fillOpacity={1} fill="url(#colorB2B)" name="B2B (Partners)" />
+                      <Area type="monotone" dataKey="b2c" stroke="#D30014" fill="#D30014" fillOpacity={0.2} name="B2C (الأعضاء)" />
+                      <Area type="monotone" dataKey="b2b" stroke="#8884d8" fill="#8884d8" fillOpacity={0.2} name="B2B (الشركات)" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -2365,199 +1685,69 @@ export default function AdminDashboard({
 
             {/* Province Specific Performance Breakdown */}
             <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 overflow-hidden">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                <h3 className="text-lg font-black text-white flex items-center gap-2">
-                  <MapPin className="w-5 h-5 text-[#D30014]" />
-                  {t.finProvinceStats}
-                </h3>
-
-                <div className="flex items-center gap-3 flex-wrap">
-                  <button
-                    onClick={handleExportFinancialAuditCSV}
-                    className="flex items-center gap-2 px-3.5 py-2 bg-[#1a1a1a] hover:bg-[#252525] border border-gray-800 text-gray-200 rounded-lg text-xs font-bold transition-all cursor-pointer"
-                  >
-                    <Download className="w-4 h-4 text-[#D30014]" />
-                    <span>{lang === "en" ? "Export Financial CSV" : "تصدير التقرير المالي CSV"}</span>
-                  </button>
-
-                  <button
-                    onClick={handleExportComprehensiveAnalyticsPDF}
-                    className="flex items-center gap-2 px-3.5 py-2 bg-[#D30014] hover:bg-red-700 text-white rounded-lg text-xs font-black transition-all shadow-md cursor-pointer"
-                  >
-                    <FileText className="w-4 h-4" />
-                    <span>{lang === "en" ? "Export Comprehensive Audit PDF" : "تصدير التقرير الشامل PDF"}</span>
-                  </button>
-                </div>
-              </div>
-              
+              <h3 className="text-lg font-black text-white mb-6 flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-[#D30014]" />
+                {t.finProvinceStats}
+              </h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-widest font-bold">
+                    <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold">
                       <th className="py-3 px-4">{t.finProvinceCol}</th>
                       <th className="py-3 px-4 text-center">{t.finPartnersCol}</th>
                       <th className="py-3 px-4 text-center">{t.finUsersCol}</th>
-                      <th className="py-3 px-4 text-center">{lang === "en" ? "B2B Rev (IQD)" : "إيراد B2B (د.ع)"}</th>
-                      <th className="py-3 px-4 text-center">{lang === "en" ? "B2C Rev (IQD)" : "إيراد B2C (د.ع)"}</th>
+                      <th className="py-3 px-4 text-center">إيراد B2B</th>
+                      <th className="py-3 px-4 text-center">إيراد B2C</th>
                       <th className="py-3 px-4 text-right">{t.finRevenueCol}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
                     {liveProvinceBreakdown.map((pb, idx) => (
-                      <tr key={idx} className="hover:bg-white/[0.02] transition-colors">
-                        <td className="py-3.5 px-4 font-bold text-white flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-[#D30014]"></span>
-                          {lang === "en" ? pb.province : pb.provinceAr}
-                        </td>
-                        <td className="py-3.5 px-4 text-center text-white">{pb.partners} / <span className="text-xs text-gray-600">{pb.targetPartners}</span></td>
-                        <td className="py-3.5 px-4 text-center text-white">{pb.users} / <span className="text-xs text-gray-600">{pb.targetUsers}</span></td>
-                        <td className="py-3.5 px-4 text-center text-gray-400">{pb.collectedB2B.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}</td>
-                        <td className="py-3.5 px-4 text-center text-gray-400">{pb.collectedB2C.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}</td>
-                        <td className="py-3.5 px-4 text-right font-black text-green-400">
-                          {(pb.collectedB2B + pb.collectedB2C).toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
-                        </td>
+                      <tr key={idx} className="hover:bg-white/[0.02]">
+                        <td className="py-3.5 px-4 font-bold text-white">{pb.provinceAr}</td>
+                        <td className="py-3.5 px-4 text-center">{pb.partners}</td>
+                        <td className="py-3.5 px-4 text-center">{pb.users}</td>
+                        <td className="py-3.5 px-4 text-center text-gray-400">{pb.collectedB2B.toLocaleString()} IQD</td>
+                        <td className="py-3.5 px-4 text-center text-gray-400">{pb.collectedB2C.toLocaleString()} IQD</td>
+                        <td className="py-3.5 px-4 text-right font-black text-green-400">{(pb.collectedB2B + pb.collectedB2C).toLocaleString()} IQD</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </div>
-
           </div>
         )}
 
-        {/* ----------------- FILTER CONTROLS FOR CRUD TABLES ----------------- */}
-        {!isLoading && activeTab !== "analytics" && (
-          <div className="bg-[#121212] border border-gray-800 p-6 rounded-xl mb-6 space-y-4">
-            
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 w-full">
-              <h3 className="text-lg font-black">
-                {activeTab === "members" ? "B2C Members Registry" : "B2B Partners Registry"}
-              </h3>
-              
-              <div className="flex items-center gap-3 w-full sm:w-auto justify-end flex-wrap">
+        {/* MEMBERS TAB */}
+        {activeTab === "members" && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center bg-[#121212] p-4 rounded-xl border border-gray-800">
+              <input
+                type="text"
+                placeholder="ابحث بالاسم أو رقم البطاقة..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="px-4 py-2 bg-black border border-gray-800 rounded-lg text-xs font-bold text-white outline-none w-72"
+              />
+              {!isViewer && (
                 <button
-                  onClick={() => {
-                    if (activeTab === "members") handleExportMembersCSV();
-                    else if (activeTab === "partners") handleExportPartnersCSV();
-                    else handleExportFinancialAuditCSV();
-                  }}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] hover:bg-red-700 border border-red-600 text-white font-bold rounded-lg text-xs sm:text-sm transition-all cursor-pointer"
+                  onClick={() => { resetMemberForm(); setEditingMember(null); setShowMemberForm(true); }}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] text-white font-bold rounded-lg text-xs hover:bg-[#b00010] cursor-pointer"
                 >
-                  <Download className="w-4 h-4" />
-                  <span>{lang === "en" ? "Export CSV" : "تصدير CSV"}</span>
+                  <Plus className="w-4 h-4" /> <span>إضافة عضو جديد</span>
                 </button>
-
-                <button
-                  onClick={handleExportToExcel}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-green-700 hover:bg-green-800 border border-green-600 text-white font-bold rounded-lg text-xs sm:text-sm transition-all cursor-pointer"
-                >
-                  <FileSpreadsheet className="w-4 h-4" />
-                  <span>{lang === "en" ? "Export Excel" : "تصدير إكسل"}</span>
-                </button>
-
-                <button
-                  onClick={handleExportToPDF}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-rose-700 hover:bg-rose-800 border border-rose-600 text-white font-bold rounded-lg text-xs sm:text-sm transition-all cursor-pointer"
-                >
-                  <CreditCard className="w-4 h-4" />
-                  <span>{lang === "en" ? "Export PDF" : "تصدير PDF"}</span>
-                </button>
-
-                {!isViewer && (
-                  <button
-                    onClick={() => {
-                      if (activeTab === "members") {
-                        resetMemberForm();
-                        setEditingMember(null);
-                        setShowMemberForm(true);
-                      } else {
-                        resetPartnerForm();
-                        setEditingPartner(null);
-                        setShowPartnerForm(true);
-                      }
-                    }}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] text-white font-bold rounded-lg text-xs sm:text-sm hover:bg-[#b00010] cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>{activeTab === "members" ? t.addMemberBtn : t.addPartnerBtn}</span>
-                  </button>
-                )}
-              </div>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-2">
-              <div className="relative">
-                <Search className="absolute inset-y-0 left-3 my-auto w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder={activeTab === "members" ? (lang === "en" ? "Search by Name or Card ID..." : "ابحث بالاسم أو رقم البطاقة...") : t.searchPlaceholder}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-9 py-2.5 bg-black border border-gray-800 focus:border-[#D30014] rounded-lg text-xs font-bold text-white outline-none"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="absolute inset-y-0 right-2.5 my-auto w-5 h-5 flex items-center justify-center text-gray-400 hover:text-white"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-
-              <div className="relative">
-                <select
-                  value={provinceFilter}
-                  onChange={(e) => setProvinceFilter(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-black border border-gray-800 focus:border-[#D30014] rounded-lg text-xs font-bold text-white outline-none cursor-pointer"
-                >
-                  <option value="All">🌍 {t.allProvinces}</option>
-                  {provincesList.map((p, idx) => (
-                    <option key={idx} value={p.en}>{lang === "en" ? p.en : p.ar}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="relative">
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-black border border-gray-800 focus:border-[#D30014] rounded-lg text-xs font-bold text-white outline-none cursor-pointer"
-                >
-                  <option value="All">⚡ {t.allStatus}</option>
-                  <option value="Active">{t.active}</option>
-                  <option value="Inactive">{t.inactive}</option>
-                </select>
-              </div>
-
-              <button
-                onClick={() => {
-                  setSearchQuery("");
-                  setProvinceFilter("All");
-                  setStatusFilter("All");
-                }}
-                className="w-full py-2.5 bg-black hover:bg-gray-900 border border-gray-800 text-xs font-bold text-gray-400 hover:text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>{lang === "en" ? "Clear Filters" : "إعادة تعيين الفلاتر"}</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ----------------- SECTION 2: MEMBERS TAB (B2C) ----------------- */}
-        {!isLoading && activeTab === "members" && (
-          <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden shadow-lg">
-            <div className="overflow-x-auto">
+            <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wider font-bold bg-black/40">
+                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold bg-black/40">
                     <th className="py-4 px-6">{t.tblFullName}</th>
                     <th className="py-4 px-6">{t.tblCardId}</th>
                     <th className="py-4 px-6">{t.tblProvince}</th>
-                    <th className="py-4 px-6">{lang === "en" ? "Duration" : "مدة الاشتراك"}</th>
+                    <th className="py-4 px-6">المدة</th>
                     <th className="py-4 px-6">{t.tblRegDate}</th>
                     <th className="py-4 px-6">{t.tblExpDate}</th>
                     <th className="py-4 px-6 text-center">{t.tblStatus}</th>
@@ -2566,63 +1756,34 @@ export default function AdminDashboard({
                 </thead>
                 <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
                   {filteredMembers.map((m) => (
-                    <tr key={m.id} className="hover:bg-white/[0.02] transition-colors">
+                    <tr key={m.id} className="hover:bg-white/[0.02]">
                       <td className="py-4 px-6">
                         <div className="font-extrabold text-white">{m.fullName}</div>
-                        <div className="text-xs text-gray-500 font-bold font-mono mt-0.5">{m.fullNameAr}</div>
+                        <div className="text-xs text-gray-500 font-bold font-mono">{m.fullNameAr}</div>
                       </td>
-                      <td className="py-4 px-6 font-mono text-[#D30014] font-black tracking-wider">
-                        {m.cardId}
-                      </td>
-                      <td className="py-4 px-6">
-                        {lang === "en" ? m.province : m.provinceAr}
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="text-xs font-extrabold text-white">
-                          {m.durationMonths === 12 || m.feePaidIqd === 50000
-                            ? (lang === "en" ? "1 Year" : "سنة واحدة")
-                            : (lang === "en" ? "6 Months" : "6 أشهر")}
-                        </div>
-                      </td>
+                      <td className="py-4 px-6 font-mono text-[#D30014] font-black">{m.cardId}</td>
+                      <td className="py-4 px-6">{lang === "en" ? m.province : m.provinceAr}</td>
+                      <td className="py-4 px-6 text-xs">{m.durationMonths === 12 ? "سنة واحدة" : "6 أشهر"}</td>
                       <td className="py-4 px-6 text-xs text-gray-400 font-mono">{m.registrationDate}</td>
                       <td className="py-4 px-6 text-xs text-gray-400 font-mono">{m.expiryDate}</td>
                       <td className="py-4 px-6 text-center">
-                        {isViewer ? (
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-black ${
+                        <button
+                          onClick={() => !isViewer && handleToggleMemberStatus(m)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-black cursor-pointer ${
                             isMemberActive(m) ? "bg-green-500/10 text-green-400 border border-green-500/20" : "bg-red-500/10 text-red-500 border border-red-500/20"
-                          }`}>
-                            {isMemberActive(m) ? t.active : t.inactive}
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleToggleMemberStatus(m)}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-black cursor-pointer hover:scale-105 transition-all ${
-                              isMemberActive(m)
-                                ? "bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20"
-                                : "bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20"
-                            }`}
-                          >
-                            <span className={`w-1.5 h-1.5 rounded-full ${isMemberActive(m) ? "bg-green-400" : "bg-red-500"}`}></span>
-                            {isMemberActive(m) ? t.active : t.inactive}
-                          </button>
-                        )}
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${isMemberActive(m) ? "bg-green-400" : "bg-red-500"}`}></span>
+                          {isMemberActive(m) ? t.active : t.inactive}
+                        </button>
                       </td>
                       <td className="py-4 px-6 text-right">
                         {!isViewer && (
                           <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => handleToggleMemberStatus(m)}
-                              className={`p-1.5 border rounded text-xs font-bold cursor-pointer ${
-                                isMemberActive(m) ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : "bg-green-500/10 text-green-400 border-green-500/20"
-                              }`}
-                            >
-                              {isMemberActive(m) ? (lang === "en" ? "Deactivate" : "تعطيل") : (lang === "en" ? "Activate" : "تفعيل")}
-                            </button>
-                            <button onClick={() => handleEditMemberClick(m)} className="p-1.5 bg-gray-800 text-gray-300 rounded hover:text-white">
+                            <button onClick={() => handleEditMemberClick(m)} className="p-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded cursor-pointer">
                               <Edit3 className="w-4 h-4" />
                             </button>
-                            <button onClick={() => handleDeleteMember(m.id)} className="p-1.5 bg-red-500/10 text-red-400 hover:text-white">
+                            <button onClick={() => handleDeleteMember(m.id)} className="p-1.5 bg-red-500/10 hover:bg-[#D30014] text-red-400 hover:text-white rounded cursor-pointer">
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
@@ -2636,75 +1797,233 @@ export default function AdminDashboard({
           </div>
         )}
 
-        {/* ----------------- SECTION 3: PARTNERS TAB (B2B) ----------------- */}
-        {!isLoading && activeTab === "partners" && (
-          <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wider font-bold">
-                    <th className="py-4 px-6">{t.tblCompanyName}</th>
-                    <th className="py-4 px-6">{t.tblSector}</th>
-                    <th className="py-4 px-6">{t.tblProvince}</th>
-                    <th className="py-4 px-6">{t.tblVideo}</th>
-                    <th className="py-4 px-6">{t.tblFees}</th>
-                    <th className="py-4 px-6 text-center">{t.tblStatus}</th>
-                    <th className="py-4 px-6 text-right">{t.tblActions}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
-                  {filteredPartners.map((p) => (
-                    <tr key={p.id} className="hover:bg-white/[0.01] transition-colors">
-                      <td className="py-4 px-6">
-                        <div className="flex items-center gap-3">
-                          <img src={p.logoUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=200&auto=format&fit=crop"} alt={p.companyName} className="w-10 h-10 rounded-lg object-cover bg-black" />
-                          <div>
-                            <div className="font-extrabold text-white">{p.companyName}</div>
-                            <div className="text-xs text-gray-500 font-bold mt-0.5">{p.companyNameAr}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-4 px-6 text-xs font-black uppercase text-gray-400">{lang === "en" ? p.sector : p.sectorAr}</td>
-                      <td className="py-4 px-6">{lang === "en" ? p.province : p.provinceAr}</td>
-                      <td className="py-4 px-6">
-                        {p.promoVideoUrl ? (
-                          <button onClick={() => setActiveVideoUrl(p.promoVideoUrl)} className="flex items-center gap-1 text-xs text-[#D30014] bg-[#D30014]/10 border border-[#D30014]/25 px-2 py-1 rounded font-bold">
-                            <Video className="w-3.5 h-3.5" /> <span>{t.watchPromo}</span>
-                          </button>
-                        ) : (
-                          <span className="text-xs text-gray-600">No Video</span>
-                        )}
-                      </td>
-                      <td className="py-4 px-6 text-xs font-mono font-bold text-white">{(p.feePaidIqd || 150000).toLocaleString()} IQD</td>
-                      <td className="py-4 px-6 text-center">
-                        <button
-                          type="button"
-                          onClick={() => !isViewer && handleTogglePartnerStatus(p)}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-black ${
-                            isPartnerActive(p) ? "bg-green-500/10 text-green-400 border border-green-500/20" : "bg-red-500/10 text-red-500 border border-red-500/20"
-                          }`}
-                        >
-                          <span className={`w-1.5 h-1.5 rounded-full ${isPartnerActive(p) ? "bg-green-400" : "bg-red-500"}`}></span>
-                          {isPartnerActive(p) ? t.active : t.inactive}
-                        </button>
-                      </td>
-                      <td className="py-4 px-6 text-right">
-                        {!isViewer && (
-                          <div className="flex items-center justify-end gap-2">
-                            <button onClick={() => handleEditPartnerClick(p)} className="p-1.5 bg-gray-800 text-gray-300 rounded"><Edit3 className="w-4 h-4" /></button>
-                            <button onClick={() => handleDeletePartner(p.id)} className="p-1.5 bg-red-500/10 text-red-400"><Trash2 className="w-4 h-4" /></button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
       </div>
+
+      {/* ----------------- MODAL MODAL: MEMBER CRUD FORM ----------------- */}
+      {showMemberForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+          <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 sm:p-8 relative max-h-[90vh] overflow-y-auto shadow-2xl">
+            <h3 className="text-xl font-black mb-6 flex items-center gap-2">
+              <span className="w-2.5 h-5 bg-[#D30014] rounded-sm"></span>
+              {editingMember ? "تعديل تفاصيل المشترك B2C" : "إضافة مشترك جديد B2C"}
+            </h3>
+
+            <form onSubmit={handleSaveMember} className="space-y-4 text-xs sm:text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-400 font-bold mb-1.5">{t.mFullNameEn} *</label>
+                  <input
+                    type="text"
+                    required
+                    value={memberForm.fullName}
+                    onChange={(e) => setMemberForm({ ...memberForm, fullName: e.target.value })}
+                    placeholder="Ahmed Ali Al-Rubaie"
+                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-400 font-bold mb-1.5">{t.mFullNameAr} *</label>
+                  <input
+                    type="text"
+                    required
+                    value={memberForm.fullNameAr}
+                    onChange={(e) => setMemberForm({ ...memberForm, fullNameAr: e.target.value })}
+                    placeholder="أحمد علي الربيعي"
+                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-gray-400 font-bold mb-1.5">{t.mCardId} *</label>
+                <input
+                  type="text"
+                  required
+                  value={memberForm.cardId}
+                  onChange={(e) => setMemberForm({ ...memberForm, cardId: e.target.value })}
+                  placeholder="BYD-2026-XXX"
+                  className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-mono font-bold outline-none focus:border-[#D30014]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-400 font-bold mb-1.5">{t.mProvince} *</label>
+                  <select
+                    value={memberForm.province}
+                    onChange={(e) => setMemberForm({ ...memberForm, province: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
+                  >
+                    {provincesList.map((p, idx) => (
+                      <option key={idx} value={p.en}>{p.ar} ({p.en})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-gray-400 font-bold mb-1.5">{t.mStatus} *</label>
+                  <select
+                    value={memberForm.status}
+                    onChange={(e) => setMemberForm({ ...memberForm, status: e.target.value as "Active" | "Inactive" })}
+                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
+                  >
+                    <option value="Active">{t.active}</option>
+                    <option value="Inactive">{t.inactive}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-gray-400 font-bold mb-1.5">مدة الاشتراك *</label>
+                <select
+                  value={memberForm.durationMonths}
+                  onChange={(e) => {
+                    const months = Number(e.target.value);
+                    const newFee = months === 12 ? 50000 : 25000;
+                    const regDate = memberForm.registrationDate || new Date().toISOString().split("T")[0];
+                    const regTime = new Date(regDate).getTime();
+                    const expTime = regTime + (months === 12 ? 365 : 180) * 24 * 60 * 60 * 1000;
+                    const newExpDate = new Date(expTime).toISOString().split("T")[0];
+
+                    setMemberForm({
+                      ...memberForm,
+                      durationMonths: months,
+                      feePaidIqd: newFee,
+                      feePaidUsd: Math.round(newFee / 1500),
+                      expiryDate: newExpDate
+                    });
+                  }}
+                  className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
+                >
+                  <option value={6}>6 أشهر من تاريخ التسجيل - 25,000 د.ع</option>
+                  <option value={12}>سنة واحدة من تاريخ التسجيل - 50,000 د.ع</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-gray-400 font-bold mb-1.5">أقرب نقطة دالة</label>
+                <input
+                  type="text"
+                  value={memberForm.nearestLandmark || ""}
+                  onChange={(e) => setMemberForm({ ...memberForm, nearestLandmark: e.target.value })}
+                  placeholder="مثال: قرب دجلة مول"
+                  className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowMemberForm(false)}
+                  className="px-5 py-2.5 bg-[#121212] border border-gray-800 text-gray-300 font-bold rounded-lg cursor-pointer"
+                >
+                  {t.cancel}
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white font-bold rounded-lg transition-all cursor-pointer"
+                >
+                  {t.save}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ----------------- MODAL MODAL: PARTNER CRUD FORM ----------------- */}
+      {showPartnerForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+          <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 sm:p-8 relative max-h-[90vh] overflow-y-auto shadow-2xl">
+            <h3 className="text-xl font-black mb-6 flex items-center gap-2">
+              <span className="w-2.5 h-5 bg-[#D30014] rounded-sm"></span>
+              {editingPartner ? "تعديل تفاصيل الشريك B2B" : "إضافة شركة شريكة جديدة B2B"}
+            </h3>
+
+            <form onSubmit={handleSavePartner} className="space-y-4 text-xs sm:text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-400 font-bold mb-1.5">{t.pCompanyNameEn} *</label>
+                  <input
+                    type="text"
+                    required
+                    value={partnerForm.companyName}
+                    onChange={(e) => setPartnerForm({ ...partnerForm, companyName: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-400 font-bold mb-1.5">{t.pCompanyNameAr} *</label>
+                  <input
+                    type="text"
+                    required
+                    value={partnerForm.companyNameAr}
+                    onChange={(e) => setPartnerForm({ ...partnerForm, companyNameAr: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowPartnerForm(false)}
+                  className="px-5 py-2.5 bg-[#121212] border border-gray-800 text-gray-300 font-bold rounded-lg cursor-pointer"
+                >
+                  {t.cancel}
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white font-bold rounded-lg transition-all cursor-pointer"
+                >
+                  {t.save}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ----------------- MODAL MODAL: CARD CRUD FORM ----------------- */}
+      {showCardForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 sm:p-8 relative shadow-2xl">
+            <h3 className="text-xl font-black mb-6 flex items-center gap-2">
+              <span className="w-2.5 h-5 bg-[#D30014] rounded-sm"></span>
+              {editingCard ? "تعديل أصول البطاقة" : "توليد بطاقة جديدة"}
+            </h3>
+
+            <form onSubmit={handleSaveCard} className="space-y-4 text-xs sm:text-sm">
+              <div>
+                <label className="block text-gray-400 font-bold mb-1.5">الرقم المسلسل للبطاقة *</label>
+                <input
+                  type="text"
+                  required
+                  value={cardForm.cardId}
+                  onChange={(e) => setCardForm({ ...cardForm, cardId: e.target.value.toUpperCase() })}
+                  className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-mono font-bold outline-none focus:border-[#D30014]"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowCardForm(false)}
+                  className="px-5 py-2.5 bg-[#121212] border border-gray-800 text-gray-300 font-bold rounded-lg cursor-pointer"
+                >
+                  {t.cancel}
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white font-bold rounded-lg transition-all cursor-pointer"
+                >
+                  {t.save}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
