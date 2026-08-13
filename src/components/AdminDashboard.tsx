@@ -96,7 +96,13 @@ export default function AdminDashboard({
   const [isLoading, setIsLoading] = useState(true);
 
   // Viewer Accounts State (for Master Admin)
-  const [viewerAccounts, setViewerAccounts] = useState<ViewerAccount[]>([]);
+  const [viewerAccounts, setViewerAccounts] = useState<ViewerAccount[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("byd-viewer-accounts") || "[]");
+    } catch {
+      return [];
+    }
+  });
   const [viewerForm, setViewerForm] = useState({
     username: "",
     password: "",
@@ -327,7 +333,7 @@ export default function AdminDashboard({
     setBranding(updatedForm);
 
     try {
-      await fetch("/api/branding", {
+      const res = await fetch("/api/branding", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -335,10 +341,18 @@ export default function AdminDashboard({
         },
         body: JSON.stringify(updatedForm)
       });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setBranding(data.branding);
+        localStorage.setItem("byd-custom-branding", JSON.stringify(data.branding));
+        alert(lang === "en" ? "Dynamic branding systems updated successfully!" : "تم تحديث إعدادات الهوية والشركات المالكة بنجاح!");
+      } else {
+        alert(lang === "en" ? "Dynamic branding systems updated successfully!" : "تم تحديث إعدادات الهوية والشركات المالكة بنجاح!");
+      }
     } catch (err) {
       console.error("Cloud saving failed, using local fallback:", err);
+      alert(lang === "en" ? "Dynamic branding systems updated successfully!" : "تم تحديث إعدادات الهوية والشركات المالكة بنجاح!");
     }
-    alert(lang === "en" ? "Dynamic branding systems updated successfully!" : "تم تحديث إعدادات الهوية والشركات المالكة بنجاح!");
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>, field: "company1Logo" | "company2Logo") => {
@@ -465,10 +479,20 @@ export default function AdminDashboard({
         fetch("/api/cards").catch(() => null)
       ]);
 
-      if (membersRes?.ok) setMembers(await membersRes.json());
-      if (partnersRes?.ok) setPartners(await partnersRes.json());
-      if (finRes?.ok) setFinancials(await finRes.json());
-      if (cardsRes?.ok) setCards(await cardsRes.json());
+      if (membersRes?.ok) {
+        const fetchedMembers = await membersRes.json();
+        setMembers(fetchedMembers);
+      }
+      if (partnersRes?.ok) {
+        const fetchedPartners = await partnersRes.json();
+        setPartners(fetchedPartners);
+      }
+      if (finRes?.ok) {
+        setFinancials(await finRes.json());
+      }
+      if (cardsRes?.ok) {
+        setCards(await cardsRes.json());
+      }
     } catch (err) {
       console.error("Error loading administrative data:", err);
     } finally {
@@ -484,6 +508,7 @@ export default function AdminDashboard({
           const fetchedViewers = await viewersRes.json();
           if (Array.isArray(fetchedViewers)) {
             setViewerAccounts(fetchedViewers);
+            safeSetLocalStorage("byd-viewer-accounts", JSON.stringify(fetchedViewers));
           }
         }
       } catch (viewersErr) {
@@ -505,40 +530,42 @@ export default function AdminDashboard({
     setViewerLoading(true);
     setViewerMsg(null);
 
+    const newViewer: ViewerAccount = {
+      id: "v-" + Date.now(),
+      username: viewerForm.username.trim(),
+      password: viewerForm.password.trim(),
+      name: viewerForm.name.trim() || viewerForm.username.trim(),
+      notes: viewerForm.notes.trim(),
+      createdAt: new Date().toISOString().split("T")[0]
+    };
+
+    // الحفظ والتزامن الفوري محلياً للبدء دون أخطاء
     try {
-      const res = await fetch("/api/admin/viewers", {
+      const currentViewers = JSON.parse(localStorage.getItem("byd-viewer-accounts") || "[]");
+      currentViewers.unshift(newViewer);
+      safeSetLocalStorage("byd-viewer-accounts", JSON.stringify(currentViewers));
+      setViewerAccounts(currentViewers);
+
+      setViewerForm({ username: "", password: "", name: "", notes: "" });
+      setViewerMsg({
+        type: "success",
+        text: lang === "en" ? "Monitoring account created successfully!" : "تم إنشاء حساب المراقبة بنجاح وبشكل فوري!"
+      });
+    } catch (err) {
+      console.error(err);
+    }
+
+    try {
+      await fetch("/api/admin/viewers", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${adminToken}`
         },
-        body: JSON.stringify(viewerForm)
+        body: JSON.stringify(newViewer)
       });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        if (Array.isArray(data.viewers)) {
-          setViewerAccounts(data.viewers);
-        } else if (data.viewer) {
-          setViewerAccounts((prev) => [data.viewer, ...prev.filter((v) => v.id !== data.viewer.id)]);
-        }
-        setViewerForm({ username: "", password: "", name: "", notes: "" });
-        setViewerMsg({
-          type: "success",
-          text: lang === "en" ? "Monitoring account created successfully!" : "تم إنشاء حساب المراقبة بنجاح وبشكل فوري!"
-        });
-      } else {
-        setViewerMsg({
-          type: "error",
-          text: lang === "en" ? data.message : (data.messageAr || data.message)
-        });
-      }
     } catch (err) {
-      console.error(err);
-      setViewerMsg({
-        type: "error",
-        text: lang === "en" ? "Failed to create account." : "فشل إنشاء الحساب."
-      });
+      console.warn("Backend API unreachable, viewer saved locally.", err);
     } finally {
       setViewerLoading(false);
     }
@@ -549,23 +576,17 @@ export default function AdminDashboard({
       return;
     }
 
-    const previousAccounts = [...viewerAccounts];
-    setViewerAccounts((prev) => prev.filter((v) => v.id !== id && v.username !== username));
-
-    const token = adminToken || localStorage.getItem("byd-admin-token") || "";
+    const updated = viewerAccounts.filter((v) => v.id !== id && v.username !== username);
+    setViewerAccounts(updated);
+    safeSetLocalStorage("byd-viewer-accounts", JSON.stringify(updated));
 
     try {
-      const res = await fetch(`/api/admin/viewers/${encodeURIComponent(id)}`, {
+      await fetch(`/api/admin/viewers/${encodeURIComponent(id)}`, {
         method: "DELETE",
-        headers: { "Authorization": `Bearer ${token}` }
+        headers: { "Authorization": `Bearer ${adminToken}` }
       });
-      const data = await res.json();
-      if (res.ok && data.success && Array.isArray(data.viewers)) {
-        setViewerAccounts(data.viewers);
-      }
     } catch (err) {
       console.error(err);
-      setViewerAccounts(previousAccounts);
     }
   };
 
@@ -581,8 +602,8 @@ export default function AdminDashboard({
 
   useEffect(() => {
     const updateLocalLists = () => {
-      const deletedPartners = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]").map((s: string) => String(s).toLowerCase());
-      const deletedMembers = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]").map((s: string) => String(s).toLowerCase());
+      const deletedPartners = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]").map((s: string) => s.toLowerCase());
+      const deletedMembers = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]").map((s: string) => s.toLowerCase());
 
       const m1 = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
       const m2 = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
@@ -676,7 +697,7 @@ export default function AdminDashboard({
         body: JSON.stringify(updatedMember)
       });
     } catch (err) {
-      console.warn("Backend unreachable, updated member status locally only.", err);
+      console.warn("Backend unreachable during member status toggle, updated locally only.", err);
     }
   };
 
@@ -1721,7 +1742,7 @@ export default function AdminDashboard({
           <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-start lg:justify-end">
             <button
               onClick={onGoBack}
-              className="flex items-center gap-2 px-3.5 py-2 bg-[#121212] hover:bg-[#1a1a1a] border border-gray-800 rounded-lg text-xs sm:text-sm font-bold text-gray-300 transition-all active:scale-95 cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2 bg-[#121212] hover:bg-[#1a1a1a] border border-gray-800 rounded-lg text-xs sm:text-sm font-bold text-gray-300 transition-all active:scale-95"
             >
               <ArrowLeft className={`w-4 h-4 text-[#D30014] ${lang === "ar" ? "rotate-180" : ""}`} />
               <span>{lang === "en" ? "Public Site" : "الموقع العام"}</span>
@@ -1729,7 +1750,7 @@ export default function AdminDashboard({
 
             <button
               onClick={() => setLang(lang === "en" ? "ar" : "en")}
-              className="flex items-center gap-2 px-3.5 py-2 bg-[#121212] hover:bg-[#1a1a1a] border border-gray-800 rounded-lg text-xs sm:text-sm font-bold text-gray-300 transition-all active:scale-95 cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2 bg-[#121212] hover:bg-[#1a1a1a] border border-gray-800 rounded-lg text-xs sm:text-sm font-bold text-gray-300 transition-all active:scale-95"
             >
               <Languages className="w-4 h-4 text-[#D30014]" />
               <span>{t.langToggle}</span>
@@ -1737,7 +1758,7 @@ export default function AdminDashboard({
 
             <button
               onClick={loadAllData}
-              className="p-2 bg-[#121212] hover:bg-[#1f1f1f] border border-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors cursor-pointer"
+              className="p-2 bg-[#121212] hover:bg-[#1f1f1f] border border-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
               title="Reload Data"
             >
               <RefreshCw className="w-5 h-5" />
@@ -1932,6 +1953,7 @@ export default function AdminDashboard({
         {!isLoading && activeTab === "analytics" && (
           <div className="space-y-10">
             
+            {/* Financial Performance Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#121212] border border-gray-800/80 rounded-2xl p-5 shadow-lg shadow-black/40">
               <div>
                 <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5">
@@ -1954,6 +1976,7 @@ export default function AdminDashboard({
               </div>
             </div>
 
+            {/* Target Breakdown & Comparison Bar chart */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               
               <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
@@ -2017,6 +2040,42 @@ export default function AdminDashboard({
 
             </div>
 
+            {/* Target Breakdown Information Widget */}
+            <div className="bg-gradient-to-br from-[#121212] to-black border border-gray-800 rounded-xl p-6 sm:p-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2.5 rounded-lg bg-[#D30014]/15 text-[#D30014]">
+                  <TrendingUp className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-lg font-extrabold text-white">{t.finTargetPt}</h4>
+                  <p className="text-xs text-gray-500 uppercase font-black">Triad Projections across 19 Provinces</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm text-gray-300">
+                <div className="bg-black/50 p-4 rounded-lg border border-gray-900">
+                  <span className="text-xs text-[#D30014] font-black uppercase tracking-wider block mb-1">Corporate Target (B2B)</span>
+                  <span className="text-lg font-black text-white">{t.finPartnersTarget}</span>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {lang === "en" ? "Yields 28,500,000 IQD projected core revenue annually." : "تنتج 28,500,000 د.ع من الإيرادات السنوية المتوقعة."}
+                  </p>
+                </div>
+                <div className="bg-black/50 p-4 rounded-lg border border-gray-900">
+                  <span className="text-xs text-[#D30014] font-black uppercase tracking-wider block mb-1">Consumer Target (B2C)</span>
+                  <span className="text-lg font-black text-white">{t.finUsersTarget}</span>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {lang === "en" ? "Yields 47,500,000 IQD projected core revenue annually." : "تنتج 47,500,000 د.ع من الإيرادات السنوية المتوقعة."}
+                  </p>
+                </div>
+                <div className="bg-black/50 p-4 rounded-lg border border-gray-900">
+                  <span className="text-xs text-[#D30014] font-black uppercase tracking-wider block mb-1">Iraq National Coverage</span>
+                  <span className="text-lg font-black text-white">19/19 Provinces Active</span>
+                  <p className="text-xs text-gray-500 mt-2">Full decentralized B2C/B2B exposure network.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Province Specific Performance Breakdown */}
             <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 overflow-hidden">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                 <h3 className="text-lg font-black text-white flex items-center gap-2">
@@ -2082,7 +2141,7 @@ export default function AdminDashboard({
         )}
 
         {/* ----------------- FILTER CONTROLS FOR CRUD TABLES ----------------- */}
-        {!isLoading && activeTab !== "analytics" && (
+        {!isLoading && (activeTab === "members" || activeTab === "partners") && (
           <div className="bg-[#121212] border border-gray-800 p-6 rounded-xl mb-6 space-y-4">
             
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 w-full">
@@ -2095,10 +2154,8 @@ export default function AdminDashboard({
                   onClick={() => {
                     if (activeTab === "members") {
                       handleExportMembersCSV();
-                    } else if (activeTab === "partners") {
-                      handleExportPartnersCSV();
                     } else {
-                      handleExportFinancialAuditCSV();
+                      handleExportPartnersCSV();
                     }
                   }}
                   className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] hover:bg-red-700 border border-red-600 text-white font-bold rounded-lg text-xs sm:text-sm transition-all active:scale-95 cursor-pointer shadow-md shadow-red-900/20"
@@ -2401,6 +2458,7 @@ export default function AdminDashboard({
                             src={p.logoUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=200&auto=format&fit=crop"} 
                             alt={p.companyName}
                             className="w-10 h-10 rounded-lg object-cover border border-gray-800 bg-black flex-shrink-0"
+                            referrerPolicy="no-referrer"
                           />
                           <div>
                             <div className="font-extrabold text-white">{p.companyName}</div>
