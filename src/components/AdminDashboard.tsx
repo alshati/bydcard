@@ -73,7 +73,7 @@ export default function AdminDashboard({
   const t = translations[lang];
   const isViewer = userRole === "viewer";
 
-  // Tab State
+  // Tab State: "analytics" | "members" | "partners" | "branding" | "cards" | "viewers"
   const [activeTab, setActiveTab] = useState<"analytics" | "members" | "partners" | "branding" | "cards" | "viewers">("analytics");
 
   // Data States
@@ -1631,17 +1631,58 @@ export default function AdminDashboard({
 
         {/* Tab Selection */}
         <div className="flex border-b border-gray-800 mb-8 overflow-x-auto gap-2">
-          {["analytics", "members", "partners", "branding", "cards"].map((tab) => (
+          <button
+            onClick={() => { setActiveTab("analytics"); setSearchQuery(""); }}
+            className={`px-5 py-3 text-sm font-black border-b-2 transition-all cursor-pointer ${
+              activeTab === "analytics" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500"
+            }`}
+          >
+            {t.dashboardTab}
+          </button>
+          <button
+            onClick={() => { setActiveTab("members"); setSearchQuery(""); }}
+            className={`px-5 py-3 text-sm font-black border-b-2 transition-all cursor-pointer ${
+              activeTab === "members" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500"
+            }`}
+          >
+            {t.membersTab}
+          </button>
+          <button
+            onClick={() => { setActiveTab("partners"); setSearchQuery(""); }}
+            className={`px-5 py-3 text-sm font-black border-b-2 transition-all cursor-pointer ${
+              activeTab === "partners" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500"
+            }`}
+          >
+            {t.partnersTab}
+          </button>
+          <button
+            onClick={() => { setActiveTab("branding"); setSearchQuery(""); }}
+            className={`px-5 py-3 text-sm font-black border-b-2 transition-all cursor-pointer ${
+              activeTab === "branding" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500"
+            }`}
+          >
+            الشركات المالكة
+          </button>
+          <button
+            onClick={() => { setActiveTab("cards"); setSearchQuery(""); }}
+            className={`px-5 py-3 text-sm font-black border-b-2 transition-all cursor-pointer ${
+              activeTab === "cards" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500"
+            }`}
+          >
+            إدارة البطاقات
+          </button>
+
+          {!isViewer && (
             <button
-              key={tab}
-              onClick={() => { setActiveTab(tab as any); setSearchQuery(""); }}
-              className={`px-5 py-3 text-sm font-black border-b-2 transition-all cursor-pointer ${
-                activeTab === tab ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500"
+              onClick={() => { setActiveTab("viewers"); setSearchQuery(""); }}
+              className={`px-5 py-3 text-sm font-black border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+                activeTab === "viewers" ? "border-[#D30014] text-white bg-[#121212]/50" : "border-transparent text-gray-500"
               }`}
             >
-              {tab === "analytics" ? t.dashboardTab : tab === "members" ? t.membersTab : tab === "partners" ? t.partnersTab : tab === "branding" ? "الشركات المالكة" : "إدارة البطاقات"}
+              <Eye className="w-4 h-4 text-[#D30014]" />
+              <span>حسابات المراقبة والتدقيق</span>
             </button>
-          ))}
+          )}
         </div>
 
         {/* ANALYTICS TAB */}
@@ -1797,9 +1838,196 @@ export default function AdminDashboard({
           </div>
         )}
 
+        {/* PARTNERS TAB */}
+        {activeTab === "partners" && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center bg-[#121212] p-4 rounded-xl border border-gray-800">
+              <input
+                type="text"
+                placeholder="ابحث باسم الشركة..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="px-4 py-2 bg-black border border-gray-800 rounded-lg text-xs font-bold text-white outline-none w-72"
+              />
+              {!isViewer && (
+                <button
+                  onClick={() => { resetPartnerForm(); setEditingPartner(null); setShowPartnerForm(true); }}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] text-white font-bold rounded-lg text-xs hover:bg-[#b00010] cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" /> <span>إضافة شركة شريكة</span>
+                </button>
+              )}
+            </div>
+
+            <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold bg-black/40">
+                    <th className="py-4 px-6">{t.tblCompanyName}</th>
+                    <th className="py-4 px-6">{t.tblSector}</th>
+                    <th className="py-4 px-6">{t.tblProvince}</th>
+                    <th className="py-4 px-6">{t.tblFees}</th>
+                    <th className="py-4 px-6 text-center">{t.tblStatus}</th>
+                    <th className="py-4 px-6 text-right">{t.tblActions}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
+                  {filteredPartners.map((p) => (
+                    <tr key={p.id} className="hover:bg-white/[0.02]">
+                      <td className="py-4 px-6">
+                        <div className="font-extrabold text-white">{p.companyName}</div>
+                        <div className="text-xs text-gray-500 font-bold">{p.companyNameAr}</div>
+                      </td>
+                      <td className="py-4 px-6 text-xs font-black uppercase text-gray-400">{lang === "en" ? p.sector : p.sectorAr}</td>
+                      <td className="py-4 px-6">{lang === "en" ? p.province : p.provinceAr}</td>
+                      <td className="py-4 px-6 text-xs font-mono text-white">{(p.feePaidIqd || 150000).toLocaleString()} IQD</td>
+                      <td className="py-4 px-6 text-center">
+                        <button
+                          type="button"
+                          onClick={() => !isViewer && handleTogglePartnerStatus(p)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-black cursor-pointer ${
+                            isPartnerActive(p) ? "bg-green-500/10 text-green-400 border border-green-500/20" : "bg-red-500/10 text-red-500 border border-red-500/20"
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${isPartnerActive(p) ? "bg-green-400" : "bg-red-500"}`}></span>
+                          {isPartnerActive(p) ? t.active : t.inactive}
+                        </button>
+                      </td>
+                      <td className="py-4 px-6 text-right">
+                        {!isViewer && (
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => handleEditPartnerClick(p)} className="p-1.5 bg-gray-800 text-gray-300 rounded cursor-pointer"><Edit3 className="w-4 h-4" /></button>
+                            <button onClick={() => handleDeletePartner(p.id)} className="p-1.5 bg-red-500/10 text-red-400 rounded cursor-pointer"><Trash2 className="w-4 h-4" /></button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* BRANDING TAB */}
+        {activeTab === "branding" && (
+          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 sm:p-8">
+            <h2 className="text-xl font-black text-white mb-6">إعدادات الهوية والشركات المالكة</h2>
+            <form onSubmit={handleSaveBranding} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-gray-400 font-bold text-xs mb-1">الشركة المالكة الأولى (إنجليزي)</label>
+                  <input type="text" value={brandingForm.company1Name} onChange={(e) => setBrandingForm({ ...brandingForm, company1Name: e.target.value })} className="w-full p-2.5 bg-black border border-gray-800 rounded text-white text-xs font-bold" />
+                </div>
+                <div>
+                  <label className="block text-gray-400 font-bold text-xs mb-1">الشركة المالكة الأولى (عربي)</label>
+                  <input type="text" value={brandingForm.company1NameAr} onChange={(e) => setBrandingForm({ ...brandingForm, company1NameAr: e.target.value })} className="w-full p-2.5 bg-black border border-gray-800 rounded text-white text-xs font-bold" />
+                </div>
+                <div>
+                  <label className="block text-gray-400 font-bold text-xs mb-1">الشركة المالكة الثانية (إنجليزي)</label>
+                  <input type="text" value={brandingForm.company2Name} onChange={(e) => setBrandingForm({ ...brandingForm, company2Name: e.target.value })} className="w-full p-2.5 bg-black border border-gray-800 rounded text-white text-xs font-bold" />
+                </div>
+                <div>
+                  <label className="block text-gray-400 font-bold text-xs mb-1">الشركة المالكة الثانية (عربي)</label>
+                  <input type="text" value={brandingForm.company2NameAr} onChange={(e) => setBrandingForm({ ...brandingForm, company2NameAr: e.target.value })} className="w-full p-2.5 bg-black border border-gray-800 rounded text-white text-xs font-bold" />
+                </div>
+              </div>
+              <button type="submit" className="px-6 py-2.5 bg-[#D30014] text-white font-bold rounded text-xs cursor-pointer">حفظ الهوية</button>
+            </form>
+          </div>
+        )}
+
+        {/* CARDS TAB */}
+        {activeTab === "cards" && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center bg-[#121212] p-4 rounded-xl border border-gray-800">
+              <h3 className="text-base font-black">إدارة أصول البطاقات والأرقام التسلسلية</h3>
+              {!isViewer && (
+                <button onClick={handleGenerateSequentialCard} className="flex items-center gap-2 px-4 py-2 bg-[#D30014] text-white text-xs font-bold rounded cursor-pointer">
+                  <Plus className="w-4 h-4" /> <span>توليد بطاقة متسلسلة</span>
+                </button>
+              )}
+            </div>
+
+            <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold">
+                    <th className="py-4 px-6">الرقم المسلسل</th>
+                    <th className="py-4 px-6">الحالة</th>
+                    <th className="py-4 px-6 text-right">العمليات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
+                  {cards.map((c) => (
+                    <tr key={c.id}>
+                      <td className="py-4 px-6 font-mono text-white font-bold">{c.cardId}</td>
+                      <td className="py-4 px-6">
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${c.status === "Active" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-500"}`}>
+                          {c.status === "Active" ? "نشطة" : "معطلة"}
+                        </span>
+                      </td>
+                      <td className="py-4 px-6 text-right">
+                        {!isViewer && (
+                          <div className="flex justify-end gap-2">
+                            <button onClick={() => handleEditCard(c)} className="p-1.5 bg-gray-800 text-gray-300 rounded cursor-pointer"><Edit3 className="w-4 h-4" /></button>
+                            <button onClick={() => handleDeleteCard(c.id)} className="p-1.5 bg-red-500/10 text-red-400 rounded cursor-pointer"><Trash2 className="w-4 h-4" /></button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* VIEWERS TAB (Master Admin Only) */}
+        {activeTab === "viewers" && !isViewer && (
+          <div className="space-y-6">
+            <div className="bg-[#121212] border border-gray-800 p-6 rounded-xl space-y-4">
+              <h3 className="text-base font-black text-white">إنشاء حساب مراقبة وتدقيق جديد (Read-Only)</h3>
+              <form onSubmit={handleCreateViewerAccount} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <input type="text" required placeholder="اسم المستخدم" value={viewerForm.username} onChange={(e) => setViewerForm({ ...viewerForm, username: e.target.value })} className="p-2.5 bg-black border border-gray-800 rounded text-xs font-bold text-white" />
+                <input type="text" required placeholder="كلمة المرور" value={viewerForm.password} onChange={(e) => setViewerForm({ ...viewerForm, password: e.target.value })} className="p-2.5 bg-black border border-gray-800 rounded text-xs font-bold text-white" />
+                <input type="text" placeholder="اسم المراقب / الجهة" value={viewerForm.name} onChange={(e) => setViewerForm({ ...viewerForm, name: e.target.value })} className="p-2.5 bg-black border border-gray-800 rounded text-xs font-bold text-white" />
+                <button type="submit" className="py-2.5 bg-[#D30014] text-white text-xs font-bold rounded cursor-pointer">إنشاء الحساب</button>
+              </form>
+            </div>
+
+            <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold">
+                    <th className="py-4 px-6">اسم المستخدم</th>
+                    <th className="py-4 px-6">كلمة المرور</th>
+                    <th className="py-4 px-6">اسم المراقب</th>
+                    <th className="py-4 px-6 text-right">إجراء</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
+                  {viewerAccounts.map((account) => (
+                    <tr key={account.id}>
+                      <td className="py-4 px-6 font-mono text-white font-bold">{account.username}</td>
+                      <td className="py-4 px-6 font-mono text-amber-300">{account.password}</td>
+                      <td className="py-4 px-6">{account.name || "—"}</td>
+                      <td className="py-4 px-6 text-right">
+                        <button onClick={() => handleDeleteViewerAccount(account.id, account.username)} className="p-1.5 bg-red-500/10 text-red-500 rounded cursor-pointer">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
       </div>
 
-      {/* ----------------- MODAL MODAL: MEMBER CRUD FORM ----------------- */}
+      {/* MODAL: MEMBER CRUD FORM */}
       {showMemberForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
           <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 sm:p-8 relative max-h-[90vh] overflow-y-auto shadow-2xl">
@@ -1930,7 +2158,7 @@ export default function AdminDashboard({
         </div>
       )}
 
-      {/* ----------------- MODAL MODAL: PARTNER CRUD FORM ----------------- */}
+      {/* MODAL: PARTNER CRUD FORM */}
       {showPartnerForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
           <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 sm:p-8 relative max-h-[90vh] overflow-y-auto shadow-2xl">
@@ -1983,7 +2211,7 @@ export default function AdminDashboard({
         </div>
       )}
 
-      {/* ----------------- MODAL MODAL: CARD CRUD FORM ----------------- */}
+      {/* MODAL: CARD CRUD FORM */}
       {showCardForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
           <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 sm:p-8 relative shadow-2xl">
