@@ -95,7 +95,7 @@ export default function AdminDashboard({
   const [cards, setCards] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Viewer Accounts State (for Master Admin) - FIXED: Loaded safely from localStorage
+  // Viewer Accounts State (for Master Admin)
   const [viewerAccounts, setViewerAccounts] = useState<ViewerAccount[]>(() => {
     try {
       return JSON.parse(localStorage.getItem("byd-viewer-accounts") || "[]");
@@ -474,9 +474,12 @@ export default function AdminDashboard({
     discountAr: "10%"
   });
 
+  // Filter States
   const [searchQuery, setSearchQuery] = useState("");
   const [provinceFilter, setProvinceFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
+
+  // Video Preview Modal
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
 
   // Load All Dashboard Data
@@ -966,7 +969,6 @@ export default function AdminDashboard({
     const sixMonthsCount = activeLocalMembers.filter(m => !m.durationMonths || m.durationMonths === 6).length;
     const twelveMonthsCount = activeLocalMembers.filter(m => m.durationMonths === 12).length;
 
-    // Sector breakdown
     const sectorStats: { [sector: string]: number } = {};
     activeLocalPartners.forEach(p => {
       const s = p.sector || p.sectorAr || "Other";
@@ -1567,8 +1569,7 @@ export default function AdminDashboard({
     printWindow.document.close();
   };
 
-
-  // PARTNER CRUD ACTIONS
+  // PARTNER CRUD ACTIONS - FIXED: Local storage fallback for saving partner without failing
   const handleSavePartner = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!partnerForm.companyName || !partnerForm.companyNameAr) {
@@ -1813,8 +1814,7 @@ export default function AdminDashboard({
     });
   };
 
-
-  // CARD CRUD ACTIONS
+  // CARD CRUD ACTIONS - FIXED: Local storage fallback to prevent Vercel API network errors
   const handleSaveCard = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cardForm.cardId) {
@@ -2132,6 +2132,164 @@ export default function AdminDashboard({
     return sum + (isNaN(fee) ? 25000 : fee);
   }, 0);
 
+  // FINANCIAL DATA PREPARATION FOR RECHARTS
+  const getRevenueComparisonData = () => {
+    return [
+      {
+        name: lang === "en" ? "B2B (Partners)" : "الشركات (B2B)",
+        Collected: localB2BCollected,
+        Target: 28500000
+      },
+      {
+        name: lang === "en" ? "B2C (Members)" : "الأعضاء (B2C)",
+        Collected: localB2CCollected,
+        Target: 95000000
+      }
+    ];
+  };
+
+  // Dynamic monthly trend containing updated targets and live real-time localStorage metrics
+  const getLiveMonthlyTrend = () => {
+    if (!financials || !financials.monthlyTrend) return [];
+    return financials.monthlyTrend.map((item: any) => {
+      if (item.month === "Current (Live)") {
+        return {
+          ...item,
+          b2b: localB2BCollected,
+          b2c: localB2CCollected,
+          b2bTarget: 28500000,
+          b2cTarget: 95000000
+        };
+      }
+      if (item.month === "12/2026 (Target)") {
+        return {
+          ...item,
+          b2b: 28500000,
+          b2c: 95000000,
+          b2bTarget: 28500000,
+          b2cTarget: 95000000
+        };
+      }
+      return {
+        ...item,
+        b2bTarget: 28500000,
+        b2cTarget: 95000000
+      };
+    });
+  };
+
+  // Helper to download CSV file with UTF-8 BOM for Arabic text compatibility in Excel/Audit tools
+  const downloadCSV = (filename: string, headers: string[], rows: (string | number)[][]) => {
+    const csvContent = [
+      headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(","),
+      ...rows.map(row => row.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportMembersCSV = () => {
+    const headers = [
+      "ID",
+      "Card ID",
+      "Full Name (EN)",
+      "Full Name (AR)",
+      "Province",
+      "Status",
+      "Fee Paid (IQD)",
+      "Duration",
+      "Registration Date",
+      "Expiry Date"
+    ];
+    const rows = filteredMembers.map(m => [
+      m.id || "",
+      m.cardId || "",
+      m.fullName || "",
+      m.fullNameAr || "",
+      m.province || "",
+      m.status || "",
+      m.feePaidIqd !== undefined && m.feePaidIqd !== null ? m.feePaidIqd : (m.feePaidUsd ? m.feePaidUsd * 1500 : 25000),
+      m.durationMonths === 12 ? "12 Months (1 Year)" : "6 Months",
+      m.registrationDate || "",
+      m.expiryDate || ""
+    ]);
+    downloadCSV(`BYD_Members_Audit_Report_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  };
+
+  const handleExportPartnersCSV = () => {
+    const headers = [
+      "ID",
+      "Company Name (EN)",
+      "Company Name (AR)",
+      "Sector",
+      "Province",
+      "Status",
+      "Fee Paid (IQD)",
+      "Discount",
+      "Username / Account",
+      "Phone",
+      "Registration Date"
+    ];
+    const rows = filteredPartners.map(p => [
+      p.id || "",
+      p.companyName || "",
+      p.companyNameAr || "",
+      p.sector || "",
+      p.province || "",
+      p.status || "",
+      p.feePaidIqd !== undefined && p.feePaidIqd !== null ? p.feePaidIqd : (p.feePaidUsd ? p.feePaidUsd * 1500 : 150000),
+      p.discount || p.discountPercentage || "10%",
+      p.username || "",
+      p.phone || "",
+      p.registrationDate || ""
+    ]);
+    downloadCSV(`BYD_Partners_Audit_Report_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  };
+
+  const handleExportFinancialAuditCSV = () => {
+    const headers = [
+      "Province",
+      "Arabic Province Name",
+      "Active B2B Partners",
+      "Active B2C Members",
+      "Collected B2B Revenue (IQD)",
+      "Collected B2C Revenue (IQD)",
+      "Total Collected Revenue (IQD)"
+    ];
+    const rows = liveProvinceBreakdown.map(pb => [
+      pb.province,
+      pb.provinceAr,
+      pb.partners,
+      pb.users,
+      pb.collectedB2B,
+      pb.collectedB2C,
+      pb.collectedB2B + pb.collectedB2C
+    ]);
+
+    const totalB2B = liveProvinceBreakdown.reduce((sum, pb) => sum + pb.collectedB2B, 0);
+    const totalB2C = liveProvinceBreakdown.reduce((sum, pb) => sum + pb.collectedB2C, 0);
+
+    rows.push([
+      "ALL PROVINCES TOTAL",
+      "الإجمالي الكلي لكافة المحافظات",
+      activeLocalPartners.length,
+      activeLocalMembers.length,
+      totalB2B,
+      totalB2C,
+      totalB2B + totalB2C
+    ]);
+
+    downloadCSV(`BYD_Financial_Audit_Report_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  };
+
   return (
     <div className="bg-[#050505] min-h-screen text-white pt-6 pb-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -2425,6 +2583,43 @@ export default function AdminDashboard({
                 </div>
               </div>
             </div>
+
+            <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 overflow-hidden">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <h3 className="text-lg font-black text-white flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-[#D30014]" />
+                  {t.finProvinceStats}
+                </h3>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button onClick={handleExportFinancialAuditCSV} className="flex items-center gap-2 px-3.5 py-2 bg-[#1a1a1a] border border-gray-800 text-gray-200 rounded-lg text-xs font-bold cursor-pointer">
+                    <Download className="w-4 h-4 text-[#D30014]" />
+                    <span>تصدير المالي CSV</span>
+                  </button>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold">
+                      <th className="py-3 px-4">{t.finProvinceCol}</th>
+                      <th className="py-3 px-4 text-center">{t.finPartnersCol}</th>
+                      <th className="py-3 px-4 text-center">{t.finUsersCol}</th>
+                      <th className="py-3 px-4 text-right">{t.finRevenueCol}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
+                    {liveProvinceBreakdown.map((pb, idx) => (
+                      <tr key={idx} className="hover:bg-white/[0.02]">
+                        <td className="py-3.5 px-4 font-bold text-white">{lang === "en" ? pb.province : pb.provinceAr}</td>
+                        <td className="py-3.5 px-4 text-center text-white">{pb.partners}</td>
+                        <td className="py-3.5 px-4 text-center text-white">{pb.users}</td>
+                        <td className="py-3.5 px-4 text-right font-black text-green-400">{(pb.collectedB2B + pb.collectedB2C).toLocaleString()} د.ع</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
 
@@ -2432,46 +2627,20 @@ export default function AdminDashboard({
         {!isLoading && activeTab !== "analytics" && activeTab !== "branding" && activeTab !== "cards" && activeTab !== "viewers" && (
           <div className="bg-[#121212] border border-gray-800 p-6 rounded-xl mb-6 space-y-4">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 w-full">
-              <h3 className="text-lg font-black">
-                {activeTab === "members" ? "B2C Members Registry" : "B2B Partners Registry"}
-              </h3>
-              
+              <h3 className="text-lg font-black">{activeTab === "members" ? "B2C Members Registry" : "B2B Partners Registry"}</h3>
               <div className="flex items-center gap-3 w-full sm:w-auto justify-end flex-wrap">
-                <button
-                  onClick={() => activeTab === "members" ? handleExportMembersCSV() : handleExportPartnersCSV()}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] hover:bg-red-700 text-white font-bold rounded-lg text-xs sm:text-sm cursor-pointer"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>تصدير CSV</span>
+                <button onClick={() => activeTab === "members" ? handleExportMembersCSV() : handleExportPartnersCSV()} className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] text-white font-bold rounded-lg text-xs cursor-pointer">
+                  <Download className="w-4 h-4" /> <span>تصدير CSV</span>
                 </button>
-
-                <button onClick={handleExportToExcel} className="flex items-center gap-2 px-4 py-2.5 bg-green-700 hover:bg-green-800 text-white font-bold rounded-lg text-xs sm:text-sm cursor-pointer">
-                  <FileSpreadsheet className="w-4 h-4" />
-                  <span>تصدير إكسل</span>
+                <button onClick={handleExportToExcel} className="flex items-center gap-2 px-4 py-2.5 bg-green-700 text-white font-bold rounded-lg text-xs cursor-pointer">
+                  <FileSpreadsheet className="w-4 h-4" /> <span>تصدير إكسل</span>
                 </button>
-
-                <button onClick={handleExportToPDF} className="flex items-center gap-2 px-4 py-2.5 bg-rose-700 hover:bg-rose-800 text-white font-bold rounded-lg text-xs sm:text-sm cursor-pointer">
-                  <CreditCard className="w-4 h-4" />
-                  <span>تصدير PDF</span>
+                <button onClick={handleExportToPDF} className="flex items-center gap-2 px-4 py-2.5 bg-rose-700 text-white font-bold rounded-lg text-xs cursor-pointer">
+                  <CreditCard className="w-4 h-4" /> <span>تصدير PDF</span>
                 </button>
-
                 {!isViewer && (
-                  <button
-                    onClick={() => {
-                      if (activeTab === "members") {
-                        resetMemberForm();
-                        setEditingMember(null);
-                        setShowMemberForm(true);
-                      } else {
-                        resetPartnerForm();
-                        setEditingPartner(null);
-                        setShowPartnerForm(true);
-                      }
-                    }}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] text-white font-bold rounded-lg text-xs sm:text-sm hover:bg-[#b00010] cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>{activeTab === "members" ? t.addMemberBtn : t.addPartnerBtn}</span>
+                  <button onClick={() => { if (activeTab === "members") { resetMemberForm(); setEditingMember(null); setShowMemberForm(true); } else { resetPartnerForm(); setEditingPartner(null); setShowPartnerForm(true); } }} className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] text-white font-bold rounded-lg text-xs cursor-pointer">
+                    <Plus className="w-4 h-4" /> <span>{activeTab === "members" ? t.addMemberBtn : t.addPartnerBtn}</span>
                   </button>
                 )}
               </div>
@@ -2480,63 +2649,40 @@ export default function AdminDashboard({
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-2">
               <div className="relative">
                 <Search className="absolute inset-y-0 left-3 my-auto w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="ابحث بالاسم أو رقم البطاقة..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-9 py-2.5 bg-black border border-gray-800 rounded-lg text-xs font-bold text-white outline-none"
-                />
+                <input type="text" placeholder="بحث..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-9 py-2.5 bg-black border border-gray-800 rounded-lg text-xs font-bold text-white outline-none" />
               </div>
-
               <div className="relative">
-                <select
-                  value={provinceFilter}
-                  onChange={(e) => setProvinceFilter(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-black border border-gray-800 rounded-lg text-xs font-bold text-white outline-none cursor-pointer"
-                >
+                <select value={provinceFilter} onChange={(e) => setProvinceFilter(e.target.value)} className="w-full px-3 py-2.5 bg-black border border-gray-800 rounded-lg text-xs font-bold text-white outline-none cursor-pointer">
                   <option value="All">🌍 جميع المحافظات</option>
-                  {provincesList.map((p, idx) => (
-                    <option key={idx} value={p.en}>{lang === "en" ? p.en : p.ar}</option>
-                  ))}
+                  {provincesList.map((p, idx) => <option key={idx} value={p.en}>{p.ar}</option>)}
                 </select>
               </div>
-
               <div className="relative">
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-black border border-gray-800 rounded-lg text-xs font-bold text-white outline-none cursor-pointer"
-                >
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full px-3 py-2.5 bg-black border border-gray-800 rounded-lg text-xs font-bold text-white outline-none cursor-pointer">
                   <option value="All">⚡ جميع الحالات</option>
                   <option value="Active">فعال</option>
                   <option value="Inactive">غير فعال</option>
                 </select>
               </div>
-
-              <button
-                onClick={() => { setSearchQuery(""); setProvinceFilter("All"); setStatusFilter("All"); }}
-                className="w-full py-2.5 bg-black hover:bg-gray-900 border border-gray-800 text-xs font-bold text-gray-400 rounded-lg cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>إعادة تعيين الفلاتر</span>
+              <button onClick={() => { setSearchQuery(""); setProvinceFilter("All"); setStatusFilter("All"); }} className="w-full py-2.5 bg-black hover:bg-gray-900 border border-gray-800 text-xs font-bold text-gray-400 rounded-lg cursor-pointer flex items-center justify-center gap-1.5">
+                <RefreshCw className="w-3.5 h-3.5" /> <span>إعادة تعيين الفلاتر</span>
               </button>
             </div>
           </div>
         )}
 
-        {/* ----------------- SECTION 2: MEMBERS TAB (B2C) ----------------- */}
+        {/* ----------------- MEMBERS TAB (B2C) ----------------- */}
         {!isLoading && activeTab === "members" && (
           <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden shadow-lg">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold bg-black/40">
-                    <th className="py-4 px-6">الاسم الكامل</th>
-                    <th className="py-4 px-6">رقم البطاقة</th>
-                    <th className="py-4 px-6">المحافظة</th>
-                    <th className="py-4 px-6 text-center">الحالة</th>
-                    <th className="py-4 px-6 text-right">العمليات</th>
+                    <th className="py-4 px-6">{t.tblFullName}</th>
+                    <th className="py-4 px-6">{t.tblCardId}</th>
+                    <th className="py-4 px-6">{t.tblProvince}</th>
+                    <th className="py-4 px-6 text-center">{t.tblStatus}</th>
+                    <th className="py-4 px-6 text-right">{t.tblActions}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
@@ -2556,12 +2702,8 @@ export default function AdminDashboard({
                       <td className="py-4 px-6 text-right">
                         {!isViewer && (
                           <div className="flex items-center justify-end gap-2">
-                            <button onClick={() => handleEditMemberClick(m)} className="p-1.5 bg-gray-800 hover:bg-gray-700 text-white rounded cursor-pointer" title="تعديل">
-                              <Edit3 className="w-4 h-4 text-[#D30014]" />
-                            </button>
-                            <button onClick={() => handleDeleteMember(m.id)} className="p-1.5 bg-red-500/10 hover:bg-[#D30014] text-red-400 rounded cursor-pointer" title="حذف">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <button onClick={() => handleEditMemberClick(m)} className="p-1.5 bg-gray-800 text-white rounded cursor-pointer" title="تعديل"><Edit3 className="w-4 h-4 text-[#D30014]" /></button>
+                            <button onClick={() => handleDeleteMember(m.id)} className="p-1.5 bg-red-500/10 text-red-400 rounded cursor-pointer" title="حذف"><Trash2 className="w-4 h-4" /></button>
                           </div>
                         )}
                       </td>
@@ -2576,24 +2718,27 @@ export default function AdminDashboard({
           </div>
         )}
 
-        {/* ----------------- SECTION 3: PARTNERS TAB (B2B) ----------------- */}
+        {/* ----------------- PARTNERS TAB (B2B) ----------------- */}
         {!isLoading && activeTab === "partners" && (
           <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden shadow-lg">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold bg-black/40">
-                    <th className="py-4 px-6">اسم الشركة</th>
-                    <th className="py-4 px-6">القطاع</th>
-                    <th className="py-4 px-6">المحافظة</th>
-                    <th className="py-4 px-6 text-center">الحالة</th>
-                    <th className="py-4 px-6 text-right">العمليات</th>
+                    <th className="py-4 px-6">{t.tblCompanyName}</th>
+                    <th className="py-4 px-6">{t.tblSector}</th>
+                    <th className="py-4 px-6">{t.tblProvince}</th>
+                    <th className="py-4 px-6 text-center">{t.tblStatus}</th>
+                    <th className="py-4 px-6 text-right">{t.tblActions}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
                   {filteredPartners.map((p) => (
                     <tr key={p.id} className="hover:bg-white/[0.02]">
-                      <td className="py-4 px-6 font-bold text-white">{p.companyName}</td>
+                      <td className="py-4 px-6">
+                        <div className="font-extrabold text-white">{p.companyName}</div>
+                        <div className="text-xs text-gray-500 font-mono">{p.companyNameAr}</div>
+                      </td>
                       <td className="py-4 px-6 text-xs text-gray-400">{p.sectorAr || p.sector}</td>
                       <td className="py-4 px-6">{p.provinceAr || p.province}</td>
                       <td className="py-4 px-6 text-center">
@@ -2604,12 +2749,8 @@ export default function AdminDashboard({
                       <td className="py-4 px-6 text-right">
                         {!isViewer && (
                           <div className="flex items-center justify-end gap-2">
-                            <button onClick={() => handleEditPartnerClick(p)} className="p-1.5 bg-gray-800 hover:bg-gray-700 text-white rounded cursor-pointer" title="تعديل">
-                              <Edit3 className="w-4 h-4 text-[#D30014]" />
-                            </button>
-                            <button onClick={() => handleDeletePartner(p.id)} className="p-1.5 bg-red-500/10 hover:bg-[#D30014] text-red-400 rounded cursor-pointer" title="حذف">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <button onClick={() => handleEditPartnerClick(p)} className="p-1.5 bg-gray-800 text-white rounded cursor-pointer" title="تعديل"><Edit3 className="w-4 h-4 text-[#D30014]" /></button>
+                            <button onClick={() => handleDeletePartner(p.id)} className="p-1.5 bg-red-500/10 text-red-400 rounded cursor-pointer" title="حذف"><Trash2 className="w-4 h-4" /></button>
                           </div>
                         )}
                       </td>
@@ -2624,7 +2765,7 @@ export default function AdminDashboard({
           </div>
         )}
 
-        {/* ----------------- SECTION 4: BRANDING TAB ----------------- */}
+        {/* ----------------- BRANDING TAB ----------------- */}
         {!isLoading && activeTab === "branding" && (
           <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 sm:p-8">
             <h2 className="text-xl font-black text-white mb-6">إعدادات الهوية والشركات المالكة</h2>
@@ -2666,7 +2807,7 @@ export default function AdminDashboard({
           </div>
         )}
 
-        {/* ----------------- SECTION 5: CARDS TAB ----------------- */}
+        {/* ----------------- CARDS TAB ----------------- */}
         {!isLoading && activeTab === "cards" && (
           <div className="space-y-6">
             <div className="flex justify-between items-center bg-[#121212] border border-gray-800 p-6 rounded-2xl">
@@ -2699,12 +2840,8 @@ export default function AdminDashboard({
                       <td className="py-4 px-6 text-right">
                         {!isViewer && (
                           <div className="flex justify-end gap-2">
-                            <button onClick={() => handleEditCard(card)} className="p-2 bg-gray-800 text-white rounded cursor-pointer" title="تعديل">
-                              <Edit3 className="w-4 h-4 text-[#D30014]" />
-                            </button>
-                            <button onClick={() => handleDeleteCard(card.id)} className="p-2 bg-red-500/10 text-red-500 rounded cursor-pointer" title="حذف">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <button onClick={() => handleEditCard(card)} className="p-2 bg-gray-800 text-white rounded cursor-pointer" title="تعديل"><Edit3 className="w-4 h-4 text-[#D30014]" /></button>
+                            <button onClick={() => handleDeleteCard(card.id)} className="p-2 bg-red-500/10 text-red-500 rounded cursor-pointer" title="حذف"><Trash2 className="w-4 h-4" /></button>
                           </div>
                         )}
                       </td>
@@ -2719,7 +2856,7 @@ export default function AdminDashboard({
           </div>
         )}
 
-        {/* ----------------- SECTION 6: VIEWERS TAB ----------------- */}
+        {/* ----------------- VIEWERS TAB ----------------- */}
         {!isLoading && activeTab === "viewers" && !isViewer && (
           <div className="space-y-8">
             <div className="bg-[#121212] border border-gray-800 p-6 rounded-2xl">
@@ -2756,9 +2893,7 @@ export default function AdminDashboard({
                       <td className="py-4 px-6 font-mono text-amber-300">{acc.password}</td>
                       <td className="py-4 px-6">{acc.name || "—"}</td>
                       <td className="py-4 px-6 text-right">
-                        <button onClick={() => handleDeleteViewerAccount(acc.id, acc.username)} className="p-2 bg-red-500/10 text-red-500 rounded cursor-pointer">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <button onClick={() => handleDeleteViewerAccount(acc.id, acc.username)} className="p-2 bg-red-500/10 text-red-500 rounded cursor-pointer"><Trash2 className="w-4 h-4" /></button>
                       </td>
                     </tr>
                   ))}
