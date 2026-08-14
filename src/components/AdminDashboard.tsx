@@ -91,7 +91,16 @@ export default function AdminDashboard({
   const [partners, setPartners] = useState<Partner[]>([]);
   const [localMembersList, setLocalMembersList] = useState<any[]>([]);
   const [localPartnersList, setLocalPartnersList] = useState<any[]>([]);
-  const [financials, setFinancials] = useState<FinancialStats | null>(null);
+  const [financials, setFinancials] = useState<FinancialStats | null>({
+    totalCollectedIqd: 0,
+    totalTargetIqd: 123500000,
+    monthlyTrend: [
+      { month: "04/2026", b2b: 7500000, b2c: 15000000 },
+      { month: "08/2026", b2b: 18000000, b2c: 30000000 },
+      { month: "12/2026 (Target)", b2b: 28500000, b2c: 95000000 },
+      { month: "Current (Live)", b2b: 0, b2c: 0 }
+    ]
+  });
   const [cards, setCards] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -346,6 +355,20 @@ export default function AdminDashboard({
       if (res.ok && data.success) {
         setBranding(data.branding);
         localStorage.setItem("byd-custom-branding", JSON.stringify(data.branding));
+        
+        const serverBrandData = {
+          entity1NameEn: data.branding.company1Name,
+          entity1NameAr: data.branding.company1NameAr,
+          entity1DescEn: data.branding.company1Desc,
+          entity1DescAr: data.branding.company1DescAr,
+          entity1Logo: data.branding.company1Logo,
+          entity2NameEn: data.branding.company2Name,
+          entity2NameAr: data.branding.company2NameAr,
+          entity2DescEn: data.branding.company2Desc,
+          entity2DescAr: data.branding.company2DescAr,
+          entity2Logo: data.branding.company2Logo
+        };
+        localStorage.setItem('BYD_BRAND_PERSISTENT_STATE', JSON.stringify(serverBrandData));
         alert(lang === "en" ? "Dynamic branding systems updated successfully!" : "تم تحديث إعدادات الهوية والشركات المالكة بنجاح!");
       } else {
         alert(lang === "en" ? "Dynamic branding systems updated successfully!" : "تم تحديث إعدادات الهوية والشركات المالكة بنجاح!");
@@ -489,7 +512,8 @@ export default function AdminDashboard({
         setPartners(fetchedPartners);
       }
       if (finRes?.ok) {
-        setFinancials(await financialsResOrMock(finRes));
+        const finData = await finRes.json();
+        if (finData) setFinancials(finData);
       }
       if (cardsRes?.ok) {
         setCards(await cardsRes.json());
@@ -576,6 +600,7 @@ export default function AdminDashboard({
       return;
     }
 
+    const previousAccounts = [...viewerAccounts];
     const updated = viewerAccounts.filter((v) => v.id !== id && v.username !== username);
     setViewerAccounts(updated);
     safeSetLocalStorage("byd-viewer-accounts", JSON.stringify(updated));
@@ -583,10 +608,16 @@ export default function AdminDashboard({
     const token = adminToken || localStorage.getItem("byd-admin-token") || "";
 
     try {
-      await fetch(`/api/admin/viewers/${encodeURIComponent(id)}`, {
+      const res = await fetch(`/api/admin/viewers/${encodeURIComponent(id)}`, {
         method: "DELETE",
         headers: { "Authorization": `Bearer ${token}` }
       });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setViewerAccounts(previousAccounts);
+        safeSetLocalStorage("byd-viewer-accounts", JSON.stringify(previousAccounts));
+        alert(lang === "en" ? (data.message || "Failed to delete") : (data.messageAr || data.message || "فشل حذف الحساب"));
+      }
     } catch (err) {
       console.error(err);
     }
@@ -617,14 +648,17 @@ export default function AdminDashboard({
 
       const m1 = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
       const m2 = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
-      const combinedMembers = [...m1];
-      m2.forEach((m: any) => {
-        if (!combinedMembers.some((existing: any) => existing.cardId === m.cardId)) {
-          combinedMembers.push(m);
-        }
-      });
+      const combinedMembers = Array.isArray(m1) ? [...m1] : [];
+      if (Array.isArray(m2)) {
+        m2.forEach((m: any) => {
+          if (m && m.cardId && !combinedMembers.some((existing: any) => existing.cardId === m.cardId)) {
+            combinedMembers.push(m);
+          }
+        });
+      }
 
       const filteredMembersList = combinedMembers.filter((m: any) => {
+        if (!m) return false;
         const id = (m.id || "").toLowerCase();
         const cardId = (m.cardId || "").toLowerCase();
         return !deletedMembers.includes(id) && !deletedMembers.includes(cardId);
@@ -632,14 +666,17 @@ export default function AdminDashboard({
 
       const p1 = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
       const p2 = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
-      const combinedPartners = [...p1];
-      p2.forEach((p: any) => {
-        if (!combinedPartners.some((existing: any) => existing.username === p.username || existing.companyName === p.companyName)) {
-          combinedPartners.push(p);
-        }
-      });
+      const combinedPartners = Array.isArray(p1) ? [...p1] : [];
+      if (Array.isArray(p2)) {
+        p2.forEach((p: any) => {
+          if (p && !combinedPartners.some((existing: any) => existing.username === p.username || existing.companyName === p.companyName)) {
+            combinedPartners.push(p);
+          }
+        });
+      }
 
       const filteredPartnersList = combinedPartners.filter((p: any) => {
+        if (!p) return false;
         const id = (p.id || "").toLowerCase();
         const username = (p.username || "").toLowerCase();
         const companyName = (p.companyName || "").toLowerCase();
@@ -1522,6 +1559,390 @@ export default function AdminDashboard({
     printWindow.document.close();
   };
 
+  // PARTNER CRUD ACTIONS
+  const handleSavePartner = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!partnerForm.companyName || !partnerForm.companyNameAr) {
+      alert(t.errorFill);
+      return;
+    }
+
+    const provinceObj = provincesList.find(p => p.en === partnerForm.province);
+    const provinceAr = provinceObj ? provinceObj.ar : partnerForm.province;
+
+    const sectorObj = sectorsList.find(s => s.en === partnerForm.sector);
+    const sectorAr = sectorObj ? sectorObj.ar : partnerForm.sector;
+
+    const cleanCompanyName = partnerForm.companyName.trim();
+    const fallbackUsername = partnerForm.username?.trim() || (cleanCompanyName.toLowerCase().replace(/[^a-z0-9]/g, "") + "_" + Math.floor(Math.random() * 1000));
+    const fallbackPassword = partnerForm.password?.trim() || "123456";
+    const fallbackEmail = partnerForm.email?.trim() || (fallbackUsername + "@byd-network.com");
+    const fallbackPhone = partnerForm.phone?.trim() || "07700000000";
+    const fallbackDiscount = partnerForm.discount?.trim() || "10%";
+
+    const body = {
+      ...partnerForm,
+      username: fallbackUsername,
+      password: fallbackPassword,
+      email: fallbackEmail,
+      phone: fallbackPhone,
+      discount: fallbackDiscount,
+      discountEn: partnerForm.discountEn?.trim() || fallbackDiscount,
+      discountAr: partnerForm.discountAr?.trim() || fallbackDiscount,
+      provinceAr,
+      sectorAr
+    };
+
+    const url = editingPartner ? `/api/partners/${editingPartner.id}` : "/api/partners";
+    const method = editingPartner ? "PUT" : "POST";
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${adminToken}`
+        },
+        body: JSON.stringify(body)
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert(t.successSave);
+        try {
+          const registered = {
+            ...(data.partner || body),
+            feePaidIqd: (data.partner || body).feePaidIqd !== undefined ? (data.partner || body).feePaidIqd : 150000
+          };
+
+          const current = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
+          const isMatchPartner = (p: any) => {
+            if (editingPartner) {
+              if (editingPartner.id && p.id && p.id === editingPartner.id) return true;
+              if (editingPartner.username && p.username && p.username.toLowerCase() === editingPartner.username.toLowerCase()) return true;
+              if (editingPartner.companyName && p.companyName && p.companyName.toLowerCase() === editingPartner.companyName.toLowerCase()) return true;
+            }
+            if (registered.id && p.id && p.id === registered.id) return true;
+            if (registered.username && p.username && p.username.toLowerCase() === registered.username.toLowerCase()) return true;
+            if (registered.companyName && p.companyName && p.companyName.toLowerCase() === registered.companyName.toLowerCase()) return true;
+            return false;
+          };
+
+          const idx = current.findIndex(isMatchPartner);
+          if (idx > -1) {
+            current[idx] = registered;
+          } else {
+            current.push(registered);
+          }
+          safeSetLocalStorage("byd-custom-partners", JSON.stringify(current));
+
+          const companiesArray = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
+          const idxC = companiesArray.findIndex(isMatchPartner);
+          if (idxC > -1) {
+            companiesArray[idxC] = registered;
+          } else {
+            companiesArray.push(registered);
+          }
+          safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(companiesArray));
+
+          window.dispatchEvent(new Event("storage-sync-updated"));
+        } catch (e) {
+          console.error("Local storage B2B admin backup error:", e);
+        }
+        setShowPartnerForm(false);
+        setEditingPartner(null);
+        resetPartnerForm();
+        loadAllData();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleEditPartnerClick = (partner: Partner) => {
+    setEditingPartner(partner);
+    setPartnerForm({
+      companyName: partner.companyName,
+      companyNameAr: partner.companyNameAr,
+      sector: partner.sector,
+      logoUrl: partner.logoUrl,
+      promoVideoUrl: partner.promoVideoUrl,
+      province: partner.province,
+      expiryDate: partner.expiryDate,
+      status: partner.status,
+      feePaidIqd: partner.feePaidIqd || (partner.feePaidUsd ? partner.feePaidUsd * 1500 : 150000),
+      feePaidUsd: partner.feePaidUsd || 100,
+      username: partner.username || "",
+      password: partner.password || "",
+      email: partner.email || "",
+      phone: partner.phone || "",
+      discount: partner.discount || "10%",
+      discountEn: partner.discountEn || partner.discount || "10%",
+      discountAr: partner.discountAr || partner.discount || "10%"
+    });
+    setShowPartnerForm(true);
+  };
+
+  const handleTogglePartnerStatus = async (partner: Partner) => {
+    const currentActive = isPartnerActive(partner);
+    const newStatus = currentActive ? "Inactive" : "Active";
+
+    try {
+      await fetch(`/api/partners/${encodeURIComponent(partner.id || partner.username || partner.companyName)}`, {
+        method: "PUT",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${adminToken}`
+        },
+        body: JSON.stringify({ ...partner, status: newStatus })
+      });
+    } catch (err) {
+      console.error("Error toggling partner status:", err);
+    }
+
+    try {
+      const p1 = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
+      const p2 = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
+
+      const updatedP1 = p1.map((item: any) => {
+        if (item.id === partner.id || (partner.username && item.username === partner.username) || (partner.companyName && item.companyName === partner.companyName)) {
+          return { ...item, status: newStatus };
+        }
+        return item;
+      });
+      const updatedP2 = p2.map((item: any) => {
+        if (item.id === partner.id || (partner.username && item.username === partner.username) || (partner.companyName && item.companyName === partner.companyName)) {
+          return { ...item, status: newStatus };
+        }
+        return item;
+      });
+
+      safeSetLocalStorage("byd-custom-partners", JSON.stringify(updatedP1));
+      safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(updatedP2));
+    } catch (e) {
+      console.error(e);
+    }
+
+    setPartners(prev => prev.map(p => {
+      if (p.id === partner.id || (partner.username && p.username === partner.username) || (partner.companyName && p.companyName === partner.companyName)) {
+        return { ...p, status: newStatus };
+      }
+      return p;
+    }));
+    setLocalPartnersList(prev => prev.map(p => {
+      if (p.id === partner.id || (partner.username && p.username === partner.username) || (partner.companyName && p.companyName === partner.companyName)) {
+        return { ...p, status: newStatus };
+      }
+      return p;
+    }));
+
+    window.dispatchEvent(new Event("storage-sync-updated"));
+    loadAllData();
+  };
+
+  const handleDeletePartner = async (id: string) => {
+    if (!confirm(t.confirmDelete)) return;
+
+    const partnerToDelete = partners.find(p => p.id === id || p.username === id || p.companyName === id) ||
+                            localPartnersList.find((p: any) => p.id === id || p.username === id || p.companyName === id);
+    
+    const targetId = partnerToDelete?.id || id;
+    const username = partnerToDelete?.username;
+    const companyName = partnerToDelete?.companyName;
+
+    try {
+      const deletedList = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]");
+      if (targetId && !deletedList.includes(targetId)) deletedList.push(targetId);
+      if (username && !deletedList.includes(username)) deletedList.push(username);
+      if (companyName && !deletedList.includes(companyName)) deletedList.push(companyName);
+      if (id && !deletedList.includes(id)) deletedList.push(id);
+      safeSetLocalStorage("BYD_DELETED_PARTNERS", JSON.stringify(deletedList));
+
+      const isMatch = (p: any) => p.id === targetId || p.id === id || (username && p.username === username) || (companyName && p.companyName === companyName);
+
+      const syncBydCompanies = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]").filter((p: any) => !isMatch(p));
+      const syncCustomPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]").filter((p: any) => !isMatch(p));
+
+      safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(syncBydCompanies));
+      safeSetLocalStorage("byd-custom-partners", JSON.stringify(syncCustomPartners));
+    } catch (e) {
+      console.error("Localstorage partner deletion error:", e);
+    }
+
+    setPartners(prev => prev.filter(p => p.id !== targetId && p.id !== id && (!username || p.username !== username) && (!companyName || p.companyName !== companyName)));
+    setLocalPartnersList(prev => prev.filter((p: any) => p.id !== targetId && p.id !== id && (!username || p.username !== username) && (!companyName || p.companyName !== companyName)));
+
+    try {
+      await fetch(`/api/partners/${encodeURIComponent(targetId || username || companyName || id)}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${adminToken}` }
+      });
+    } catch (err) {
+      console.error("Delete partner API error:", err);
+    }
+
+    window.dispatchEvent(new Event("storage-sync-updated"));
+    loadAllData();
+  };
+
+  const resetPartnerForm = () => {
+    setPartnerForm({
+      companyName: "",
+      companyNameAr: "",
+      sector: "Restaurant",
+      logoUrl: "",
+      promoVideoUrl: "",
+      province: "Baghdad",
+      expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      status: "Active",
+      feePaidIqd: 150000,
+      feePaidUsd: 100,
+      username: "",
+      password: "",
+      email: "",
+      phone: "",
+      discount: "10%",
+      discountEn: "10%",
+      discountAr: "10%"
+    });
+  };
+
+  // CARD CRUD ACTIONS
+  const handleSaveCard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cardForm.cardId) {
+      alert(lang === "en" ? "Please fill Card Serial ID" : "يرجى إدخال رقم مسلسل البطاقة");
+      return;
+    }
+
+    const url = editingCard ? `/api/cards/${editingCard.id}` : "/api/cards";
+    const method = editingCard ? "PUT" : "POST";
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${adminToken}`
+        },
+        body: JSON.stringify(cardForm)
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert(lang === "en" ? "Card saved successfully!" : "تم حفظ البطاقة بنجاح!");
+        setShowCardForm(false);
+        setEditingCard(null);
+        resetCardForm();
+        loadAllData();
+      } else {
+        alert(lang === "en" ? data.message : data.messageAr || "Error saving card");
+      }
+    } catch (err) {
+      console.error(err);
+      alert(lang === "en" ? "Network error saving card" : "خطأ في الاتصال بالخادم أثناء حفظ البطاقة");
+    }
+  };
+
+  const handleDeleteCard = async (id: string) => {
+    if (!window.confirm(lang === "en" ? "Are you sure you want to delete this Card?" : "هل أنت متأكد من حذف هذه البطاقة؟")) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/cards/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${adminToken}` }
+      });
+      if (res.ok) {
+        alert(lang === "en" ? "Card deleted!" : "تم حذف البطاقة!");
+        loadAllData();
+      } else {
+        alert("Failed to delete card");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleEditCard = (card: any) => {
+    setEditingCard(card);
+    setCardForm({
+      cardId: card.cardId,
+      status: card.status,
+      memberId: card.memberId || ""
+    });
+    setShowCardForm(true);
+  };
+
+  const handleGenerateSequentialCard = () => {
+    let maxSuffix = 10; 
+    cards.forEach((c: any) => {
+      const match = c.cardId.match(/(\d+)$/);
+      if (match) {
+        const val = parseInt(match[1]);
+        if (val > maxSuffix) maxSuffix = val;
+      }
+    });
+
+    const nextSuffix = maxSuffix + 1;
+    const paddedSuffix = String(nextSuffix).padStart(3, "0");
+    const nextCardId = `BYD-2026-${paddedSuffix}`;
+
+    setCardForm({
+      cardId: nextCardId,
+      status: "Active",
+      memberId: ""
+    });
+    setEditingCard(null);
+    setShowCardForm(true);
+  };
+
+  const resetCardForm = () => {
+    setCardForm({
+      cardId: "",
+      status: "Active",
+      memberId: ""
+    });
+  };
+
+  const handleClearAllData = async () => {
+    if (!confirm((t as any).confirmClearAll || "Are you sure you want to permanently clear all subscriber and company data?")) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/admin/clear-all-data", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${adminToken}`
+        }
+      });
+
+      if (res.ok) {
+        localStorage.setItem("byd-custom-members", JSON.stringify([]));
+        localStorage.setItem("BYD_USERS", JSON.stringify([]));
+        localStorage.setItem("byd-custom-partners", JSON.stringify([]));
+        localStorage.setItem("BYD_COMPANIES", JSON.stringify([]));
+
+        setLocalMembersList([]);
+        setLocalPartnersList([]);
+
+        window.dispatchEvent(new Event("storage-sync-updated"));
+        window.dispatchEvent(new Event("storage"));
+
+        alert((t as any).successClearAll || "All records have been cleared successfully!");
+        loadAllData();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(lang === "en" ? (errData.message || "Failed to clear database.") : (errData.messageAr || "فشل في مسح قاعدة البيانات."));
+      }
+    } catch (err) {
+      console.error(err);
+      alert(lang === "en" ? "A network error occurred while clearing data." : "حدث خطأ في الشبكة أثناء مسح البيانات.");
+    }
+  };
+
   const isPartnerActive = (p: any) => {
     if (!p.status) return true;
     const s = String(p.status).toLowerCase();
@@ -1684,7 +2105,7 @@ export default function AdminDashboard({
   const localB2CCollected = activeLocalMembers.reduce((acc: number, m: any) => {
     const fee = m.feePaidIqd !== undefined && m.feePaidIqd !== null
       ? Number(m.feePaidIqd)
-      : (m.feePaidUsd ? Number(m.feePaidUsd) * 1500 : 25000);
+      : (p => p ? 25000 : 25000)(m);
     return acc + (isNaN(fee) ? 25000 : fee);
   }, 0);
 
@@ -1731,6 +2152,117 @@ export default function AdminDashboard({
     });
   };
 
+  const downloadCSV = (filename: string, headers: string[], rows: (string | number)[][]) => {
+    const csvContent = [
+      headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(","),
+      ...rows.map(row => row.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportMembersCSV = () => {
+    const headers = [
+      "ID",
+      "Card ID",
+      "Full Name (EN)",
+      "Full Name (AR)",
+      "Province",
+      "Status",
+      "Fee Paid (IQD)",
+      "Duration",
+      "Registration Date",
+      "Expiry Date"
+    ];
+    const rows = filteredMembers.map(m => [
+      m.id || "",
+      m.cardId || "",
+      m.fullName || "",
+      m.fullNameAr || "",
+      m.province || "",
+      m.status || "",
+      m.feePaidIqd !== undefined && m.feePaidIqd !== null ? m.feePaidIqd : (m.feePaidUsd ? m.feePaidUsd * 1500 : 25000),
+      m.durationMonths === 12 ? "12 Months (1 Year)" : "6 Months",
+      m.registrationDate || "",
+      m.expiryDate || ""
+    ]);
+    downloadCSV(`BYD_Members_Audit_Report_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  };
+
+  const handleExportPartnersCSV = () => {
+    const headers = [
+      "ID",
+      "Company Name (EN)",
+      "Company Name (AR)",
+      "Sector",
+      "Province",
+      "Status",
+      "Fee Paid (IQD)",
+      "Discount",
+      "Username / Account",
+      "Phone",
+      "Registration Date"
+    ];
+    const rows = filteredPartners.map(p => [
+      p.id || "",
+      p.companyName || "",
+      p.companyNameAr || "",
+      p.sector || "",
+      p.province || "",
+      p.status || "",
+      p.feePaidIqd !== undefined && p.feePaidIqd !== null ? p.feePaidIqd : (p.feePaidUsd ? p.feePaidUsd * 1500 : 150000),
+      p.discount || "10%",
+      p.username || "",
+      p.phone || "",
+      p.expiryDate || ""
+    ]);
+    downloadCSV(`BYD_Partners_Audit_Report_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  };
+
+  const handleExportFinancialAuditCSV = () => {
+    const headers = [
+      "Province",
+      "Arabic Province Name",
+      "Active B2B Partners",
+      "Active B2C Members",
+      "Collected B2B Revenue (IQD)",
+      "Collected B2C Revenue (IQD)",
+      "Total Collected Revenue (IQD)"
+    ];
+    const rows = liveProvinceBreakdown.map(pb => [
+      pb.province,
+      pb.provinceAr,
+      pb.partners,
+      pb.users,
+      pb.collectedB2B,
+      pb.collectedB2C,
+      pb.collectedB2B + pb.collectedB2C
+    ]);
+
+    const totalB2B = liveProvinceBreakdown.reduce((sum, pb) => sum + pb.collectedB2B, 0);
+    const totalB2C = liveProvinceBreakdown.reduce((sum, pb) => sum + pb.collectedB2C, 0);
+
+    rows.push([
+      "ALL PROVINCES TOTAL",
+      "الإجمالي الكلي لكافة المحافظات",
+      activeLocalPartners.length,
+      activeLocalMembers.length,
+      totalB2B,
+      totalB2C,
+      totalB2B + totalB2C
+    ]);
+
+    downloadCSV(`BYD_Financial_Audit_Report_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  };
+
   return (
     <div className="bg-[#050505] min-h-screen text-white pt-6 pb-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1748,7 +2280,6 @@ export default function AdminDashboard({
           </div>
           
           <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-start lg:justify-end">
-            {/* Go Back Button */}
             <button
               onClick={onGoBack}
               className="flex items-center gap-2 px-3.5 py-2 bg-[#121212] hover:bg-[#1a1a1a] border border-gray-800 rounded-lg text-xs sm:text-sm font-bold text-gray-300 transition-all active:scale-95"
@@ -1757,7 +2288,6 @@ export default function AdminDashboard({
               <span>{lang === "en" ? "Public Site" : "الموقع العام"}</span>
             </button>
 
-            {/* Language Toggle */}
             <button
               onClick={() => setLang(lang === "en" ? "ar" : "en")}
               className="flex items-center gap-2 px-3.5 py-2 bg-[#121212] hover:bg-[#1a1a1a] border border-gray-800 rounded-lg text-xs sm:text-sm font-bold text-gray-300 transition-all active:scale-95"
@@ -1766,7 +2296,6 @@ export default function AdminDashboard({
               <span>{t.langToggle}</span>
             </button>
 
-            {/* Reload Button */}
             <button
               onClick={loadAllData}
               className="p-2 bg-[#121212] hover:bg-[#1f1f1f] border border-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
@@ -1775,7 +2304,6 @@ export default function AdminDashboard({
               <RefreshCw className="w-5 h-5" />
             </button>
 
-            {/* Clear All Data Button */}
             {!isViewer && (
               <button
                 onClick={handleClearAllData}
@@ -1787,7 +2315,6 @@ export default function AdminDashboard({
               </button>
             )}
 
-            {/* Logout Button */}
             <button
               onClick={onLogout}
               className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-[#D30014] hover:text-white border border-red-500/20 text-red-500 rounded-lg text-xs sm:text-sm font-bold transition-all cursor-pointer"
@@ -3099,7 +3626,7 @@ export default function AdminDashboard({
         )}
 
         {/* ----------------- SECTION 6: VIEWER / AUDITOR ACCOUNTS (MASTER ADMIN ONLY) ----------------- */}
-        {!isViewer && activeTab === "viewers" && (
+        {!isLoading && activeTab === "viewers" && !isViewer && (
           <div className="space-y-8" id="viewers-management-panel">
             
             {/* Header info banner */}
@@ -3470,13 +3997,13 @@ export default function AdminDashboard({
                 <button
                   type="button"
                   onClick={() => setShowMemberForm(false)}
-                  className="px-5 py-2.5 bg-[#121212] hover:bg-gray-950 border border-gray-800 text-gray-300 font-bold rounded-lg transition-colors cursor-pointer"
+                  className="px-5 py-2.5 bg-[#121212] hover:bg-gray-950 border border-gray-800 text-gray-300 font-bold rounded-lg transition-colors"
                 >
                   {t.cancel}
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white font-bold rounded-lg transition-all cursor-pointer"
+                  className="px-5 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white font-bold rounded-lg transition-all"
                 >
                   {t.save}
                 </button>
@@ -3765,6 +4292,36 @@ export default function AdminDashboard({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ----------------- MODAL MODAL: ACTIVE PROMOTIONAL VIDEO PREVIEW ----------------- */}
+      {activeVideoUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
+          <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-3xl p-4 sm:p-6 relative shadow-2xl">
+            <button
+              onClick={() => setActiveVideoUrl(null)}
+              className="absolute -top-12 sm:top-4 right-2 sm:right-4 bg-[#D30014] text-white p-2 rounded-full hover:bg-red-700 transition-colors z-10"
+              title="Close Player"
+            >
+              <XCircle className="w-6 h-6" />
+            </button>
+            <h3 className="text-lg font-black text-white mb-4 flex items-center gap-2">
+              <Video className="w-5 h-5 text-[#D30014]" />
+              {lang === "en" ? "Active Promotional Video Presentation" : "عرض الفيديو الترويجي النشط للشريك"}
+            </h3>
+            <div className="aspect-video w-full bg-black rounded-lg overflow-hidden border border-gray-800 shadow-inner">
+              <video 
+                src={activeVideoUrl} 
+                className="w-full h-full object-contain" 
+                controls 
+                autoPlay 
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-4 text-center">
+              * BYD streaming systems are fully responsive and Cdn-powered.
+            </p>
           </div>
         </div>
       )}
