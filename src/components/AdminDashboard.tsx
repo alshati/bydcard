@@ -26,6 +26,7 @@ import {
   RefreshCw, 
   LogOut,
   CheckCircle,
+  XCircle,
   VideoOff,
   Languages,
   ArrowLeft,
@@ -60,7 +61,7 @@ interface AdminDashboardProps {
 }
 
 export default function AdminDashboard({ 
-  lang = "ar", 
+  lang, 
   setLang, 
   adminToken, 
   onLogout, 
@@ -73,10 +74,8 @@ export default function AdminDashboard({
   const t = translations[lang] || translations.ar;
   const isViewer = userRole === "viewer";
 
-  // Tab State
   const [activeTab, setActiveTab] = useState<"analytics" | "members" | "partners" | "branding" | "cards" | "viewers">("analytics");
 
-  // Data States
   const [members, setMembers] = useState<Member[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [localMembersList, setLocalMembersList] = useState<any[]>([]);
@@ -92,13 +91,11 @@ export default function AdminDashboard({
     ]
   });
   const [cards, setCards] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Viewer Accounts State
   const [viewerAccounts, setViewerAccounts] = useState<ViewerAccount[]>(() => {
     try {
-      const data = localStorage.getItem("byd-viewer-accounts");
-      return data ? JSON.parse(data) : [];
+      return JSON.parse(localStorage.getItem("byd-viewer-accounts") || "[]");
     } catch {
       return [];
     }
@@ -108,43 +105,79 @@ export default function AdminDashboard({
   const [viewerMsg, setViewerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Media & Template States
+  const [activeTemplate, setActiveTemplate] = useState<{ cardDesignBase64: string; type?: "image" | "video" } | null>(null);
   const [selectedAssetType, setSelectedAssetType] = useState<"image" | "video">("image");
   const [cardMedia, setCardMedia] = useState<{ type: "image" | "video"; data: string } | null>(() => {
-    try {
-      const cached = localStorage.getItem("BYD_CARD_MEDIA");
-      return cached ? JSON.parse(cached) : null;
-    } catch {
-      return null;
-    }
+    const cached = localStorage.getItem("BYD_CARD_MEDIA");
+    return cached ? JSON.parse(cached) : null;
   });
 
-  // Card Form State
+  useEffect(() => {
+    const loadMediaState = () => {
+      const cached = localStorage.getItem("BYD_CARD_MEDIA");
+      setCardMedia(cached ? JSON.parse(cached) : null);
+    };
+
+    const loadTemplate = () => {
+      const cached = localStorage.getItem('BYD_CARD_TEMPLATE_ACTIVE_STATE');
+      if (cached) {
+        try { setActiveTemplate(JSON.parse(cached)); } catch (e) { console.error(e); }
+      }
+    };
+
+    loadMediaState();
+    loadTemplate();
+
+    window.addEventListener("storage-sync-updated", loadMediaState);
+    window.addEventListener("storage", loadMediaState);
+    return () => {
+      window.removeEventListener("storage-sync-updated", loadMediaState);
+      window.removeEventListener("storage", loadMediaState);
+    };
+  }, []);
+
+  const handleMultimediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 4.5 * 1024 * 1024) {
+      alert("الملف كبير جداً. يرجى اختيار ملف بحجم أقل من 4 ميغابايت.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64String = reader.result as string;
+      const mediaPayload = { type: selectedAssetType, data: base64String };
+      localStorage.setItem('BYD_CARD_MEDIA', JSON.stringify(mediaPayload));
+      setCardMedia(mediaPayload);
+      window.dispatchEvent(new Event('storage-sync-updated'));
+      alert("تم رفع وحفظ أصل الوسائط المتعددة بنجاح!");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleResetMedia = () => {
+    localStorage.removeItem('BYD_CARD_MEDIA');
+    localStorage.removeItem('BYD_CARD_TEMPLATE_ACTIVE_STATE');
+    setCardMedia(null);
+    setActiveTemplate(null);
+    window.dispatchEvent(new Event('storage-sync-updated'));
+    alert("تمت إعادة تعيين قالب البطاقة للتصميم الافتراضي!");
+  };
+
+  // Forms State
   const [showCardForm, setShowCardForm] = useState(false);
   const [editingCard, setEditingCard] = useState<any | null>(null);
   const [cardForm, setCardForm] = useState({ cardId: "", status: "Active" as "Active" | "Inactive", memberId: "" });
 
-  // Member Form State
   const [showMemberForm, setShowMemberForm] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
-  const [memberForm, setMemberForm] = useState<{
-    fullName: string;
-    fullNameAr: string;
-    cardId: string;
-    province: string;
-    status: "Active" | "Inactive";
-    feePaidIqd: number;
-    feePaidUsd: number;
-    nearestLandmark: string;
-    durationMonths: number;
-    registrationDate: string;
-    expiryDate: string;
-  }>({
+  const [memberForm, setMemberForm] = useState({
     fullName: "",
     fullNameAr: "",
     cardId: "",
     province: "Baghdad",
-    status: "Active",
+    status: "Active" as "Active" | "Inactive",
     feePaidIqd: 25000,
     feePaidUsd: 25,
     nearestLandmark: "",
@@ -153,7 +186,6 @@ export default function AdminDashboard({
     expiryDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
   });
 
-  // Partner Form State
   const [showPartnerForm, setShowPartnerForm] = useState(false);
   const [editingPartner, setEditingPartner] = useState<Partner | null>(null);
   const [partnerForm, setPartnerForm] = useState({
@@ -171,148 +203,80 @@ export default function AdminDashboard({
     password: "",
     email: "",
     phone: "",
-    discount: "10%",
-    discountEn: "10%",
-    discountAr: "10%"
+    discount: "10%"
   });
 
-  // Branding Form State
   const [brandingForm, setBrandingForm] = useState({
-    company1Name: "TAJ Marketing",
-    company1NameAr: "شركة تاج للتسويق والإنتاج",
+    company1Name: branding?.company1Name || "TAJ Marketing",
+    company1NameAr: branding?.company1NameAr || "شركة تاج للتسويق",
     company1Desc: "",
     company1DescAr: "",
-    company1Logo: "",
-    company2Name: "GeniusWings Group",
-    company2NameAr: "أجنحة العبقرية للنظم",
+    company1Logo: branding?.company1Logo || "",
+    company2Name: branding?.company2Name || "GeniusWings Group",
+    company2NameAr: branding?.company2NameAr || "أجنحة العبقرية للنظم",
     company2Desc: "",
     company2DescAr: "",
-    company2Logo: ""
+    company2Logo: branding?.company2Logo || ""
   });
 
-  // Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [provinceFilter, setProvinceFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
 
-  // Sync Local Storage Lists
-  const updateLocalLists = () => {
+  const loadAllData = async () => {
+    setIsLoading(true);
     try {
-      const deletedPartners: string[] = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]").map((s: string) => String(s).toLowerCase());
-      const deletedMembers: string[] = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]").map((s: string) => String(s).toLowerCase());
-
-      const m1 = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
-      const m2 = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
-      const combinedMembers = Array.isArray(m1) ? [...m1] : [];
-      if (Array.isArray(m2)) {
-        m2.forEach((m: any) => {
-          if (m && m.cardId && !combinedMembers.some((existing: any) => existing.cardId === m.cardId)) {
-            combinedMembers.push(m);
-          }
-        });
+      const [mRes, pRes, fRes, cRes] = await Promise.all([
+        fetch("/api/members").catch(() => null),
+        fetch("/api/partners").catch(() => null),
+        fetch("/api/financials").catch(() => null),
+        fetch("/api/cards").catch(() => null)
+      ]);
+      if (mRes?.ok) setMembers(await mRes.json());
+      if (pRes?.ok) setPartners(await pRes.json());
+      if (fRes?.ok) {
+        const fData = await fRes.json();
+        if (fData) setFinancials(fData);
       }
+      if (cRes?.ok) setCards(await cRes.json());
 
-      const filteredMembersList = combinedMembers.filter((m: any) => {
-        if (!m) return false;
-        const id = String(m.id || "").toLowerCase();
-        const cardId = String(m.cardId || "").toLowerCase();
-        return !deletedMembers.includes(id) && !deletedMembers.includes(cardId);
-      });
-
-      const p1 = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-      const p2 = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
-      const combinedPartners = Array.isArray(p1) ? [...p1] : [];
-      if (Array.isArray(p2)) {
-        p2.forEach((p: any) => {
-          if (p && !combinedPartners.some((existing: any) => existing.username === p.username || existing.companyName === p.companyName)) {
-            combinedPartners.push(p);
-          }
-        });
-      }
-
-      const filteredPartnersList = combinedPartners.filter((p: any) => {
-        if (!p) return false;
-        const id = String(p.id || "").toLowerCase();
-        const username = String(p.username || "").toLowerCase();
-        const companyName = String(p.companyName || "").toLowerCase();
-        return !deletedPartners.includes(id) && !deletedPartners.includes(username) && !deletedPartners.includes(companyName);
-      });
-
-      const savedCards = JSON.parse(localStorage.getItem("byd-cards") || "[]");
-      setCards(Array.isArray(savedCards) ? savedCards : []);
-      setLocalMembersList(filteredMembersList);
-      setLocalPartnersList(filteredPartnersList);
-    } catch (e) {
-      console.error("Local storage error:", e);
-    }
-  };
-
-  const loadAllData = () => {
-    updateLocalLists();
-    try {
-      const brandCached = localStorage.getItem("byd-custom-branding");
-      if (brandCached) {
-        setBrandingForm(JSON.parse(brandCached));
-      } else if (branding) {
-        setBrandingForm({
-          company1Name: branding.company1Name || "TAJ Marketing",
-          company1NameAr: branding.company1NameAr || "شركة تاج للتسويق والإنتاج",
-          company1Desc: branding.company1Desc || "",
-          company1DescAr: branding.company1DescAr || "",
-          company1Logo: branding.company1Logo || "",
-          company2Name: branding.company2Name || "GeniusWings Group",
-          company2NameAr: branding.company2NameAr || "أجنحة العبقرية للنظم",
-          company2Desc: branding.company2Desc || "",
-          company2DescAr: branding.company2DescAr || "",
-          company2Logo: branding.company2Logo || ""
-        });
-      }
+      const mLocal = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
+      const pLocal = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
+      setLocalMembersList(mLocal);
+      setLocalPartnersList(pLocal);
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
     loadAllData();
-    window.addEventListener("storage-sync-updated", updateLocalLists);
-    return () => window.removeEventListener("storage-sync-updated", updateLocalLists);
-  }, []);
+  }, [adminToken]);
 
   const isPartnerActive = (p: any) => !p || !p.status || String(p.status).toLowerCase() === "active" || String(p.status).toLowerCase() === "نشط";
   const isMemberActive = (m: any) => !m || !m.status || String(m.status).toLowerCase() === "active" || String(m.status).toLowerCase() === "نشط";
 
   const allPartners = React.useMemo(() => {
-    const list: Partner[] = [...partners];
+    const list = [...partners];
     localPartnersList.forEach((lp: any) => {
       if (!lp) return;
-      const idx = list.findIndex((sp: any) => 
-        (lp.id && sp.id && lp.id === sp.id) ||
-        (lp.username && sp.username && lp.username.toLowerCase() === sp.username.toLowerCase()) ||
-        (lp.companyName && sp.companyName && lp.companyName.toLowerCase() === sp.companyName.toLowerCase())
-      );
-      if (idx > -1) {
-        list[idx] = { ...list[idx], ...lp };
-      } else {
-        list.push(lp);
-      }
+      const idx = list.findIndex((sp: any) => (lp.id && sp.id && lp.id === sp.id) || (lp.companyName && sp.companyName && lp.companyName.toLowerCase() === sp.companyName.toLowerCase()));
+      if (idx > -1) list[idx] = { ...list[idx], ...lp };
+      else list.push(lp);
     });
     return list;
   }, [partners, localPartnersList]);
 
   const allMembers = React.useMemo(() => {
-    const list: Member[] = [...members];
+    const list = [...members];
     localMembersList.forEach((lm: any) => {
       if (!lm) return;
-      const idx = list.findIndex((sm: any) => 
-        (lm.id && sm.id && lm.id === sm.id) ||
-        (lm.cardId && sm.cardId && lm.cardId.toLowerCase() === sm.cardId.toLowerCase())
-      );
-      if (idx > -1) {
-        list[idx] = { ...list[idx], ...lm };
-      } else {
-        list.push(lm);
-      }
+      const idx = list.findIndex((sm: any) => (lm.id && sm.id && lm.id === sm.id) || (lm.cardId && sm.cardId && lm.cardId.toLowerCase() === sm.cardId.toLowerCase()));
+      if (idx > -1) list[idx] = { ...list[idx], ...lm };
+      else list.push(lm);
     });
     return list;
   }, [members, localMembersList]);
@@ -320,71 +284,31 @@ export default function AdminDashboard({
   const activeLocalMembers = React.useMemo(() => allMembers.filter(isMemberActive), [allMembers]);
   const activeLocalPartners = React.useMemo(() => allPartners.filter(isPartnerActive), [allPartners]);
 
-  const localB2BCollected = React.useMemo(() => {
-    return activeLocalPartners.reduce((sum, p: any) => {
-      const fee = Number(p?.feePaidIqd) || 150000;
-      return sum + (isNaN(fee) ? 150000 : fee);
-    }, 0);
-  }, [activeLocalPartners]);
-
-  const localB2CCollected = React.useMemo(() => {
-    return activeLocalMembers.reduce((sum, m: any) => {
-      const fee = Number(m?.feePaidIqd) || 25000;
-      return sum + (isNaN(fee) ? 25000 : fee);
-    }, 0);
-  }, [activeLocalMembers]);
+  const localB2BCollected = React.useMemo(() => activeLocalPartners.reduce((sum, p: any) => sum + (Number(p?.feePaidIqd) || 150000), 0), [activeLocalPartners]);
+  const localB2CCollected = React.useMemo(() => activeLocalMembers.reduce((sum, m: any) => sum + (Number(m?.feePaidIqd) || 25000), 0), [activeLocalMembers]);
 
   const liveProvinceBreakdown = React.useMemo(() => {
-    const defaultProvs = Array.isArray(provincesList) && provincesList.length > 0 ? provincesList : [
-      { en: "Baghdad", ar: "بغداد" },
-      { en: "Erbil", ar: "أربيل" },
-      { en: "Basra", ar: "البصرة" },
-      { en: "Nineveh", ar: "نينوى" },
-      { en: "Kirkuk", ar: "كركوك" },
-      { en: "Salah al-Din", ar: "صلاح الدين" }
-    ];
-
-    return defaultProvs.map(prov => {
+    return provincesList.map(prov => {
       const provPartners = activeLocalPartners.filter(p => p && (p.province === prov.en || p.provinceAr === prov.ar));
       const provMembers = activeLocalMembers.filter(m => m && (m.province === prov.en || m.provinceAr === prov.ar));
-      
-      const collectedB2B = provPartners.reduce((s, p: any) => s + (Number(p?.feePaidIqd) || 150000), 0);
-      const collectedB2C = provMembers.reduce((s, m: any) => s + (Number(m?.feePaidIqd) || 25000), 0);
-
       return {
         province: prov.en,
         provinceAr: prov.ar,
         partners: provPartners.length,
         users: provMembers.length,
-        collectedB2B,
-        collectedB2C,
+        collectedB2B: provPartners.reduce((s, p: any) => s + (Number(p?.feePaidIqd) || 150000), 0),
+        collectedB2C: provMembers.reduce((s, m: any) => s + (Number(m?.feePaidIqd) || 25000), 0),
         targetPartners: 10,
         targetUsers: 100
       };
     });
   }, [activeLocalMembers, activeLocalPartners]);
 
-  const revenueComparisonData = React.useMemo(() => [
-    { name: lang === "en" ? "B2B (Partners)" : "الشركات (B2B)", Collected: localB2BCollected, Target: 28500000 },
-    { name: lang === "en" ? "B2C (Members)" : "الأعضاء (B2C)", Collected: localB2CCollected, Target: 95000000 }
-  ], [lang, localB2BCollected, localB2CCollected]);
-
-  const liveMonthlyTrendData = React.useMemo(() => [
-    { month: "04/2026", b2b: 7500000, b2c: 15000000, b2bTarget: 28500000, b2cTarget: 95000000 },
-    { month: "08/2026", b2b: 18000000, b2c: 30000000, b2bTarget: 28500000, b2cTarget: 95000000 },
-    { month: "12/2026 (Target)", b2b: 28500000, b2c: 95000000, b2bTarget: 28500000, b2cTarget: 95000000 },
-    { month: "Current (Live)", b2b: localB2BCollected, b2c: localB2CCollected, b2bTarget: 28500000, b2cTarget: 95000000 }
-  ], [localB2BCollected, localB2CCollected]);
-
   const filteredMembers = React.useMemo(() => {
     const q = (searchQuery || "").trim().toLowerCase();
     return allMembers.filter(m => {
       if (!m) return false;
-      const matchesSearch = !q ||
-        (m.fullName && m.fullName.toLowerCase().includes(q)) ||
-        (m.fullNameAr && m.fullNameAr.toLowerCase().includes(q)) ||
-        (m.cardId && m.cardId.toLowerCase().includes(q));
-      
+      const matchesSearch = !q || (m.fullName && m.fullName.toLowerCase().includes(q)) || (m.fullNameAr && m.fullNameAr.toLowerCase().includes(q)) || (m.cardId && m.cardId.toLowerCase().includes(q));
       const matchesProvince = provinceFilter === "All" || m.province === provinceFilter || m.provinceAr === provinceFilter;
       const matchesStatus = statusFilter === "All" || m.status === statusFilter;
       return matchesSearch && matchesProvince && matchesStatus;
@@ -395,11 +319,7 @@ export default function AdminDashboard({
     const q = (searchQuery || "").trim().toLowerCase();
     return allPartners.filter(p => {
       if (!p) return false;
-      const matchesSearch = !q ||
-        (p.companyName && p.companyName.toLowerCase().includes(q)) ||
-        (p.companyNameAr && p.companyNameAr.toLowerCase().includes(q)) ||
-        (p.sector && p.sector.toLowerCase().includes(q));
-      
+      const matchesSearch = !q || (p.companyName && p.companyName.toLowerCase().includes(q)) || (p.companyNameAr && p.companyNameAr.toLowerCase().includes(q)) || (p.sector && p.sector.toLowerCase().includes(q));
       const matchesProvince = provinceFilter === "All" || p.province === provinceFilter || p.provinceAr === provinceFilter;
       const matchesStatus = statusFilter === "All" || p.status === statusFilter;
       return matchesSearch && matchesProvince && matchesStatus;
@@ -408,44 +328,30 @@ export default function AdminDashboard({
 
   // Actions
   const handleClearAllData = () => {
-    if (!confirm("هل أنت متأكد من مسح جميع البيانات بشكل نهائي؟")) return;
-    localStorage.setItem("byd-custom-members", JSON.stringify([]));
-    localStorage.setItem("BYD_USERS", JSON.stringify([]));
-    localStorage.setItem("byd-custom-partners", JSON.stringify([]));
-    localStorage.setItem("BYD_COMPANIES", JSON.stringify([]));
-    localStorage.setItem("byd-cards", JSON.stringify([]));
+    if (!confirm("هل أنت متأكد من مسح جميع البيانات؟")) return;
+    safeSetLocalStorage("byd-custom-members", JSON.stringify([]));
+    safeSetLocalStorage("BYD_USERS", JSON.stringify([]));
+    safeSetLocalStorage("byd-custom-partners", JSON.stringify([]));
+    safeSetLocalStorage("BYD_COMPANIES", JSON.stringify([]));
+    safeSetLocalStorage("byd-cards", JSON.stringify([]));
     window.dispatchEvent(new Event("storage-sync-updated"));
     loadAllData();
   };
 
   const handleToggleMemberStatus = (member: Member) => {
-    const currentActive = isMemberActive(member);
-    const newStatus = currentActive ? "Inactive" : "Active";
+    const newStatus = isMemberActive(member) ? "Inactive" : "Active";
     const updated = { ...member, status: newStatus };
-
     const m1 = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
-    const m2 = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
-    const updateMatch = (item: any) => item && (item.id === member.id || item.cardId === member.cardId);
-
-    safeSetLocalStorage("byd-custom-members", JSON.stringify(m1.map((i: any) => updateMatch(i) ? { ...i, status: newStatus } : i)));
-    safeSetLocalStorage("BYD_USERS", JSON.stringify(m2.map((i: any) => updateMatch(i) ? { ...i, status: newStatus } : i)));
-    
+    safeSetLocalStorage("byd-custom-members", JSON.stringify(m1.map((i: any) => (i.id === member.id || i.cardId === member.cardId) ? updated : i)));
     setLocalMembersList(prev => prev.map(m => (m.id === member.id || m.cardId === member.cardId) ? updated : m));
     window.dispatchEvent(new Event("storage-sync-updated"));
   };
 
   const handleTogglePartnerStatus = (partner: Partner) => {
-    const currentActive = isPartnerActive(partner);
-    const newStatus = currentActive ? "Inactive" : "Active";
+    const newStatus = isPartnerActive(partner) ? "Inactive" : "Active";
     const updated = { ...partner, status: newStatus };
-
     const p1 = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-    const p2 = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
-    const updateMatch = (item: any) => item && (item.id === partner.id || item.username === partner.username || item.companyName === partner.companyName);
-
-    safeSetLocalStorage("byd-custom-partners", JSON.stringify(p1.map((i: any) => updateMatch(i) ? { ...i, status: newStatus } : i)));
-    safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(p2.map((i: any) => updateMatch(i) ? { ...i, status: newStatus } : i)));
-
+    safeSetLocalStorage("byd-custom-partners", JSON.stringify(p1.map((i: any) => (i.id === partner.id || i.username === partner.username) ? updated : i)));
     setLocalPartnersList(prev => prev.map(p => (p.id === partner.id || p.username === partner.username) ? updated : p));
     window.dispatchEvent(new Event("storage-sync-updated"));
   };
@@ -456,25 +362,11 @@ export default function AdminDashboard({
       alert("يرجى ملء الحقول المطلوبة");
       return;
     }
-
-    const body = {
-      id: editingMember?.id || "m-" + Date.now(),
-      ...memberForm
-    };
-
+    const body = { id: editingMember?.id || "m-" + Date.now(), ...memberForm };
     const currentCustom = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
-    const currentUsers = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
-    const isMatch = (m: any) => m && (m.id === body.id || m.cardId === body.cardId);
-
-    const idxC = currentCustom.findIndex(isMatch);
-    if (idxC > -1) currentCustom[idxC] = body; else currentCustom.push(body);
-
-    const idxU = currentUsers.findIndex(isMatch);
-    if (idxU > -1) currentUsers[idxU] = body; else currentUsers.push(body);
-
+    const idx = currentCustom.findIndex((m: any) => m.id === body.id || m.cardId === body.cardId);
+    if (idx > -1) currentCustom[idx] = body; else currentCustom.push(body);
     safeSetLocalStorage("byd-custom-members", JSON.stringify(currentCustom));
-    safeSetLocalStorage("BYD_USERS", JSON.stringify(currentUsers));
-
     window.dispatchEvent(new Event("storage-sync-updated"));
     setShowMemberForm(false);
     setEditingMember(null);
@@ -483,7 +375,6 @@ export default function AdminDashboard({
 
   const handleEditMemberClick = (member: Member) => {
     setEditingMember(member);
-    const durationMonths = member.durationMonths || 6;
     setMemberForm({
       fullName: member.fullName || "",
       fullNameAr: member.fullNameAr || "",
@@ -493,7 +384,7 @@ export default function AdminDashboard({
       feePaidIqd: member.feePaidIqd || 25000,
       feePaidUsd: member.feePaidUsd || 25,
       nearestLandmark: member.nearestLandmark || "",
-      durationMonths,
+      durationMonths: member.durationMonths || 6,
       registrationDate: member.registrationDate || new Date().toISOString().split("T")[0],
       expiryDate: member.expiryDate || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
     });
@@ -502,16 +393,11 @@ export default function AdminDashboard({
 
   const handleDeleteMember = (id: string) => {
     if (!confirm("هل أنت متأكد من الحذف؟")) return;
-    const deletedList = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]");
-    if (!deletedList.includes(id)) deletedList.push(id);
-    safeSetLocalStorage("BYD_DELETED_MEMBERS", JSON.stringify(deletedList));
-
-    const syncBydUsers = JSON.parse(localStorage.getItem("BYD_USERS") || "[]").filter((m: any) => m && m.id !== id && m.cardId !== id);
-    const syncCustomMembers = JSON.parse(localStorage.getItem("byd-custom-members") || "[]").filter((m: any) => m && m.id !== id && m.cardId !== id);
-
-    safeSetLocalStorage("BYD_USERS", JSON.stringify(syncBydUsers));
-    safeSetLocalStorage("byd-custom-members", JSON.stringify(syncCustomMembers));
-
+    const deleted = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]");
+    if (!deleted.includes(id)) deleted.push(id);
+    safeSetLocalStorage("BYD_DELETED_MEMBERS", JSON.stringify(deleted));
+    const m1 = JSON.parse(localStorage.getItem("byd-custom-members") || "[]").filter((m: any) => m.id !== id && m.cardId !== id);
+    safeSetLocalStorage("byd-custom-members", JSON.stringify(m1));
     window.dispatchEvent(new Event("storage-sync-updated"));
     loadAllData();
   };
@@ -522,25 +408,11 @@ export default function AdminDashboard({
       alert("يرجى ملء الحقول المطلوبة");
       return;
     }
-
-    const body = {
-      id: editingPartner?.id || "p-" + Date.now(),
-      ...partnerForm
-    };
-
+    const body = { id: editingPartner?.id || "p-" + Date.now(), ...partnerForm };
     const currentCustom = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-    const currentCompanies = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
-    const isMatch = (p: any) => p && (p.id === body.id || p.companyName === body.companyName);
-
-    const idxC = currentCustom.findIndex(isMatch);
-    if (idxC > -1) currentCustom[idxC] = body; else currentCustom.push(body);
-
-    const idxComp = currentCompanies.findIndex(isMatch);
-    if (idxComp > -1) currentCompanies[idxComp] = body; else currentCompanies.push(body);
-
+    const idx = currentCustom.findIndex((p: any) => p.id === body.id || p.companyName === body.companyName);
+    if (idx > -1) currentCustom[idx] = body; else currentCustom.push(body);
     safeSetLocalStorage("byd-custom-partners", JSON.stringify(currentCustom));
-    safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(currentCompanies));
-
     window.dispatchEvent(new Event("storage-sync-updated"));
     setShowPartnerForm(false);
     setEditingPartner(null);
@@ -564,25 +436,18 @@ export default function AdminDashboard({
       password: partner.password || "",
       email: partner.email || "",
       phone: partner.phone || "",
-      discount: partner.discount || "10%",
-      discountEn: partner.discountEn || "10%",
-      discountAr: partner.discountAr || "10%"
+      discount: partner.discount || "10%"
     });
     setShowPartnerForm(true);
   };
 
   const handleDeletePartner = (id: string) => {
     if (!confirm("هل أنت متأكد من الحذف؟")) return;
-    const deletedList = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]");
-    if (!deletedList.includes(id)) deletedList.push(id);
-    safeSetLocalStorage("BYD_DELETED_PARTNERS", JSON.stringify(deletedList));
-
-    const syncBydCompanies = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]").filter((p: any) => p && p.id !== id && p.username !== id);
-    const syncCustomPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]").filter((p: any) => p && p.id !== id && p.username !== id);
-
-    safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(syncBydCompanies));
-    safeSetLocalStorage("byd-custom-partners", JSON.stringify(syncCustomPartners));
-
+    const deleted = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]");
+    if (!deleted.includes(id)) deleted.push(id);
+    safeSetLocalStorage("BYD_DELETED_PARTNERS", JSON.stringify(deleted));
+    const p1 = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]").filter((p: any) => p.id !== id && p.username !== id);
+    safeSetLocalStorage("byd-custom-partners", JSON.stringify(p1));
     window.dispatchEvent(new Event("storage-sync-updated"));
     loadAllData();
   };
@@ -590,13 +455,11 @@ export default function AdminDashboard({
   const handleSaveCard = (e: React.FormEvent) => {
     e.preventDefault();
     if (!cardForm.cardId) return;
-
     const cardsList = JSON.parse(localStorage.getItem("byd-cards") || "[]");
-    const idx = cardsList.findIndex((c: any) => c && c.cardId === cardForm.cardId);
+    const idx = cardsList.findIndex((c: any) => c.cardId === cardForm.cardId);
     const newCard = { id: editingCard?.id || "c-" + Date.now(), ...cardForm };
     if (idx > -1) cardsList[idx] = newCard; else cardsList.unshift(newCard);
     safeSetLocalStorage("byd-cards", JSON.stringify(cardsList));
-
     window.dispatchEvent(new Event("storage-sync-updated"));
     setShowCardForm(false);
     setEditingCard(null);
@@ -605,16 +468,12 @@ export default function AdminDashboard({
 
   const handleEditCard = (card: any) => {
     setEditingCard(card);
-    setCardForm({
-      cardId: card.cardId || "",
-      status: card.status || "Active",
-      memberId: card.memberId || ""
-    });
+    setCardForm({ cardId: card.cardId || "", status: card.status || "Active", memberId: card.memberId || "" });
     setShowCardForm(true);
   };
 
   const handleGenerateSequentialCard = () => {
-    let maxSuffix = 10; 
+    let maxSuffix = 10;
     cards.forEach((c: any) => {
       const match = c?.cardId?.match(/(\d+)$/);
       if (match) {
@@ -622,102 +481,188 @@ export default function AdminDashboard({
         if (val > maxSuffix) maxSuffix = val;
       }
     });
-
-    const nextSuffix = maxSuffix + 1;
-    const paddedSuffix = String(nextSuffix).padStart(3, "0");
-    const nextCardId = `BYD-2026-${paddedSuffix}`;
-
-    setCardForm({ cardId: nextCardId, status: "Active", memberId: "" });
+    setCardForm({ cardId: `BYD-2026-${String(maxSuffix + 1).padStart(3, "0")}`, status: "Active", memberId: "" });
     setEditingCard(null);
     setShowCardForm(true);
   };
 
-  const downloadCSV = (filename: string, headers: string[], rows: (string | number)[][]) => {
-    const csvContent = [
-      headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(","),
-      ...rows.map(row => row.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
-    ].join("\n");
-
-    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  const handleCreateViewerAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!viewerForm.username || !viewerForm.password) return;
+    const newViewer: ViewerAccount = {
+      id: "v-" + Date.now(),
+      username: viewerForm.username.trim(),
+      password: viewerForm.password.trim(),
+      name: viewerForm.name.trim() || viewerForm.username.trim(),
+      notes: viewerForm.notes.trim(),
+      createdAt: new Date().toISOString().split("T")[0]
+    };
+    const updated = [newViewer, ...viewerAccounts];
+    setViewerAccounts(updated);
+    safeSetLocalStorage("byd-viewer-accounts", JSON.stringify(updated));
+    setViewerForm({ username: "", password: "", name: "", notes: "" });
+    setViewerMsg({ type: "success", text: "تم إنشاء حساب المراقبة بنجاح!" });
   };
 
-  const handleExportMembersCSV = () => {
-    const headers = ["ID", "Card ID", "Full Name (EN)", "Full Name (AR)", "Province", "Status", "Fee Paid (IQD)", "Reg Date"];
-    const rows = filteredMembers.map(m => [m.id || "", m.cardId || "", m.fullName || "", m.fullNameAr || "", m.province || "", m.status || "", m.feePaidIqd || 25000, m.registrationDate || ""]);
-    downloadCSV(`BYD_Members_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  const handleDeleteViewerAccount = (id: string) => {
+    if (!confirm("هل أنت متأكد من الحذف؟")) return;
+    const updated = viewerAccounts.filter(v => v.id !== id);
+    setViewerAccounts(updated);
+    safeSetLocalStorage("byd-viewer-accounts", JSON.stringify(updated));
   };
 
-  const handleExportPartnersCSV = () => {
-    const headers = ["ID", "Company Name (EN)", "Company Name (AR)", "Sector", "Province", "Status", "Fee Paid (IQD)", "Phone"];
-    const rows = filteredPartners.map(p => [p.id || "", p.companyName || "", p.companyNameAr || "", p.sector || "", p.province || "", p.status || "", p.feePaidIqd || 150000, p.phone || ""]);
-    downloadCSV(`BYD_Partners_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  const handleSaveBranding = (e: React.FormEvent) => {
+    e.preventDefault();
+    localStorage.setItem("byd-custom-branding", JSON.stringify(brandingForm));
+    if (setBranding) setBranding(brandingForm);
+    alert("تم حفظ إعدادات الهوية والشركات المالكة بنجاح!");
   };
 
-  const handleExportFinancialAuditCSV = () => {
-    const headers = ["Province", "Arabic Name", "Partners", "Members", "Collected B2B", "Collected B2C", "Total"];
-    const rows = liveProvinceBreakdown.map(pb => [pb.province, pb.provinceAr, pb.partners, pb.users, pb.collectedB2B, pb.collectedB2C, pb.collectedB2B + pb.collectedB2C]);
-    downloadCSV(`BYD_Financial_Audit_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
-  };
-
-  const handleExportToExcel = () => {
-    if (activeTab === "members") {
-      const data = filteredMembers.map(m => ({
-        "الاسم": m.fullName,
-        "رقم البطاقة": m.cardId,
-        "المحافظة": m.provinceAr || m.province,
-        "الحالة": m.status
-      }));
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Members");
-      XLSX.writeFile(wb, "byd_members.xlsx");
-    } else {
-      const data = filteredPartners.map(p => ({
-        "الشركة": p.companyName,
-        "القطاع": p.sector,
-        "المحافظة": p.provinceAr || p.province,
-        "الحالة": p.status
-      }));
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Partners");
-      XLSX.writeFile(wb, "byd_partners.xlsx");
-    }
-  };
-
-  const handleExportToPDF = () => {
-    handleExportComprehensiveAnalyticsPDF();
-  };
-
+  // 📄 Professional PDF Comprehensive Report Generator (Matches Google AI Studio design)
   const handleExportComprehensiveAnalyticsPDF = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
-      alert("يرجى السماح بالنوافذ المنبثقة لطباعة التقرير");
+      alert("يرجى السماح بالنوافذ المنبثقة لتصدير التقرير الاحترافي");
       return;
     }
+
+    const totalMembersCount = activeLocalMembers.length;
+    const totalPartnersCount = activeLocalPartners.length;
+    const totalCollectedB2B = localB2BCollected;
+    const totalCollectedB2C = localB2CCollected;
+    const totalGrossRevenue = totalCollectedB2B + totalCollectedB2C;
+    const totalTargetRevenue = 28500000 + 95000000;
+    const achievementPercent = ((totalGrossRevenue / totalTargetRevenue) * 100).toFixed(1);
+
+    const sixMonthsCount = activeLocalMembers.filter(m => !m.durationMonths || m.durationMonths === 6).length;
+    const twelveMonthsCount = activeLocalMembers.filter(m => m.durationMonths === 12).length;
+
+    const sectorStats: { [sector: string]: number } = {};
+    activeLocalPartners.forEach(p => {
+      const s = p.sector || p.sectorAr || "Other";
+      sectorStats[s] = (sectorStats[s] || 0) + 1;
+    });
+
+    const sectorRows = Object.entries(sectorStats).map(([sec, count]) => {
+      const pct = totalPartnersCount > 0 ? ((count / totalPartnersCount) * 100).toFixed(1) : "0";
+      return `<tr><td style="font-weight: bold;">${sec}</td><td style="text-align: center; font-weight: bold;">${count}</td><td style="text-align: right; color: #D30014; font-weight: bold;">${pct}%</td></tr>`;
+    }).join("");
+
+    const provinceRows = liveProvinceBreakdown.map((pb, index) => `
+      <tr style="${index % 2 === 1 ? 'background-color: #fafafa;' : ''}">
+        <td style="font-weight: bold;"><span>${pb.province}</span> <span style="color: #666; font-size: 11px;">(${pb.provinceAr})</span></td>
+        <td style="text-align: center; font-weight: bold;">${pb.partners}</td>
+        <td style="text-align: center; font-weight: bold;">${pb.users}</td>
+        <td style="text-align: right;">${pb.collectedB2B.toLocaleString()} IQD</td>
+        <td style="text-align: right;">${pb.collectedB2C.toLocaleString()} IQD</td>
+        <td style="text-align: right; font-weight: bold; color: #137333;">${(pb.collectedB2B + pb.collectedB2C).toLocaleString()} IQD</td>
+      </tr>
+    `).join("");
+
     printWindow.document.write(`
-      <html dir="rtl">
-        <head><title>تقرير التدقيق المالي والإحصائي BYD</title><style>body{font-family:Tahoma;padding:30px;}</style></head>
+      <!DOCTYPE html>
+      <html dir="ltr">
+        <head>
+          <meta charset="utf-8" />
+          <title>BYD Comprehensive Analytics & Statistical Audit Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #1a1a1a; padding: 35px; font-size: 12px; line-height: 1.45; background: #fff; }
+            .header-box { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #D30014; padding-bottom: 16px; margin-bottom: 24px; }
+            .badge-certified { background: #111; color: #fff; font-size: 10px; font-weight: 900; padding: 4px 10px; border-radius: 4px; text-transform: uppercase; }
+            .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+            .kpi-card { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 10px; padding: 14px; }
+            .kpi-card.highlight { background: #fff5f5; border-color: #fed7d7; }
+            .section-title { font-size: 13px; font-weight: 900; color: #111; text-transform: uppercase; margin: 24px 0 12px 0; border-left: 4px solid #D30014; padding-left: 8px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11.5px; }
+            th { background: #1a1a1a; color: #fff; padding: 9px 12px; text-transform: uppercase; font-size: 10.5px; }
+            td { padding: 8px 12px; border-bottom: 1px solid #e9ecef; }
+            .total-row td { background: #f1f3f5; font-weight: 900; border-top: 2px solid #111; border-bottom: 2px solid #111; }
+            .sign-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 35px; border-top: 1px solid #dee2e6; padding-top: 20px; text-align: center; }
+            .sign-box { background: #fafafa; border: 1px dashed #ced4da; border-radius: 8px; padding: 10px; }
+            .sign-placeholder { height: 40px; border-bottom: 1px solid #111; margin: 10px 20px; }
+          </style>
+        </head>
         <body>
-          <h2>BYD VIP Network - تقرير التدقيق المالي الشامل</h2>
-          <hr/>
-          <p>إجمالي إيرادات الشركات (B2B): ${localB2BCollected.toLocaleString()} د.ع</p>
-          <p>إجمالي إيرادات الأفراد (B2C): ${localB2CCollected.toLocaleString()} د.ع</p>
-          <p>إجمالي الإيرادات الكلية: ${(localB2BCollected + localB2CCollected).toLocaleString()} د.ع</p>
-          <script>window.print();</script>
+          <div class="header-box">
+            <div style="display: flex; align-items: center; gap: 14px;">
+              <div style="font-size: 20px; font-weight: 900; color: #D30014;">BYD LUXURY VIP NETWORK</div>
+            </div>
+            <div style="text-align: right;">
+              <span class="badge-certified">OFFICIAL EXECUTIVE AUDIT</span>
+              <div style="font-size: 11px; margin-top: 4px;">Date: ${new Date().toLocaleDateString()} | Time: ${new Date().toLocaleTimeString()}</div>
+            </div>
+          </div>
+
+          <div class="kpi-grid">
+            <div class="kpi-card highlight">
+              <div style="font-size: 10px; font-weight: bold; color: #6c757d;">GROSS REVENUE (IQD)</div>
+              <div style="font-size: 18px; font-weight: 900; color: #D30014; margin-top: 6px;">${totalGrossRevenue.toLocaleString()} IQD</div>
+              <div style="font-size: 10px; color: #888; margin-top: 4px;">Achievement: ${achievementPercent}%</div>
+            </div>
+            <div class="kpi-card">
+              <div style="font-size: 10px; font-weight: bold; color: #6c757d;">B2B CORPORATE REVENUE</div>
+              <div style="font-size: 18px; font-weight: 900; color: #137333; margin-top: 6px;">${totalCollectedB2B.toLocaleString()} IQD</div>
+              <div style="font-size: 10px; color: #888; margin-top: 4px;">${totalPartnersCount} Active Companies</div>
+            </div>
+            <div class="kpi-card">
+              <div style="font-size: 10px; font-weight: bold; color: #6c757d;">B2C MEMBERS REVENUE</div>
+              <div style="font-size: 18px; font-weight: 900; color: #1a73e8; margin-top: 6px;">${totalCollectedB2C.toLocaleString()} IQD</div>
+              <div style="font-size: 10px; color: #888; margin-top: 4px;">${totalMembersCount} Active Subscribers</div>
+            </div>
+            <div class="kpi-card">
+              <div style="font-size: 10px; font-weight: bold; color: #6c757d;">NATIONAL COVERAGE</div>
+              <div style="font-size: 18px; font-weight: 900; color: #111; margin-top: 6px;">19 Provinces</div>
+              <div style="font-size: 10px; color: #888; margin-top: 4px;">100% Nationwide Node</div>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+              <div class="section-title">B2C Subscription Plans Breakdown</div>
+              <table>
+                <thead><tr><th>Plan Type</th><th style="text-align: center;">Members</th><th style="text-align: right;">Total IQD</th></tr></thead>
+                <tbody>
+                  <tr><td>6-Month Plan (VIP)</td><td style="text-align: center;">${sixMonthsCount}</td><td style="text-align: right;">${(sixMonthsCount * 25000).toLocaleString()} IQD</td></tr>
+                  <tr><td>12-Month Plan (Annual)</td><td style="text-align: center;">${twelveMonthsCount}</td><td style="text-align: right;">${(twelveMonthsCount * 50000).toLocaleString()} IQD</td></tr>
+                  <tr class="total-row"><td>Total B2C</td><td style="text-align: center;">${totalMembersCount}</td><td style="text-align: right;">${totalCollectedB2C.toLocaleString()} IQD</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <div class="section-title">B2B Corporate Sectors Distribution</div>
+              <table>
+                <thead><tr><th>Sector</th><th style="text-align: center;">Count</th><th style="text-align: right;">Share %</th></tr></thead>
+                <tbody>
+                  ${sectorRows || '<tr><td colspan="3" style="text-align:center;">No partners registered</td></tr>'}
+                  <tr class="total-row"><td>Total Partners</td><td style="text-align: center;">${totalPartnersCount}</td><td style="text-align: right;">100%</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section-title">Geographical Distribution Across Iraq Governorates (19 Provinces)</div>
+          <table>
+            <thead><tr><th>Province / المحافظة</th><th style="text-align: center;">B2B</th><th style="text-align: center;">B2C</th><th style="text-align: right;">B2B Rev</th><th style="text-align: right;">B2C Rev</th><th style="text-align: right;">Total (IQD)</th></tr></thead>
+            <tbody>
+              ${provinceRows}
+              <tr class="total-row"><td>GRAND TOTAL</td><td style="text-align: center;">${activeLocalPartners.length}</td><td style="text-align: center;">${activeLocalMembers.length}</td><td style="text-align: right;">${totalCollectedB2B.toLocaleString()}</td><td style="text-align: right;">${totalCollectedB2C.toLocaleString()}</td><td style="text-align: right; color: #D30014;">${totalGrossRevenue.toLocaleString()} IQD</td></tr>
+            </tbody>
+          </table>
+
+          <div class="sign-grid">
+            <div class="sign-box"><h5>BYD Platform Administration</h5><div class="sign-placeholder"></div><p>Authorized Signature</p></div>
+            <div class="sign-box"><h5>GeniusWings Group</h5><div class="sign-placeholder"></div><p>Technical & Operations</p></div>
+            <div class="sign-box"><h5>TAJ Marketing & Production</h5><div class="sign-placeholder"></div><p>Commercial Department</p></div>
+          </div>
+
+          <script>window.onload = function() { window.print(); }</script>
         </body>
       </html>
     `);
     printWindow.document.close();
   };
+
+  const handleExportToPDF = () => handleExportComprehensiveAnalyticsPDF();
 
   return (
     <div className="bg-[#050505] min-h-screen text-white pt-6 pb-20 font-sans">
@@ -817,7 +762,7 @@ export default function AdminDashboard({
                 </h2>
                 <p className="text-xs text-gray-400 mt-1">نقاط الاستهداف وتوقعات الأداء المالي الديناميكي المباشر في محافظات العراق الـ 19.</p>
               </div>
-              <button onClick={handleExportComprehensiveAnalyticsPDF} className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] text-white font-bold rounded-xl text-xs cursor-pointer">
+              <button onClick={handleExportComprehensiveAnalyticsPDF} className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] text-white font-bold rounded-xl text-xs cursor-pointer shadow-md">
                 <FileText className="w-4 h-4" /> <span>تصدير تقرير الإحصائيات الشامل PDF</span>
               </button>
             </div>
@@ -863,7 +808,7 @@ export default function AdminDashboard({
             {/* Province Breakdown */}
             <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 overflow-hidden">
               <h3 className="text-base font-black mb-4 flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-[#D30014]" /> مؤشرات الأداء المالي المفصلة حسب المحافظات
+                <MapPin className="w-4 h-4 text-[#D30014]" /> مؤشرات الأداء المالي المفصلة حسب المحافظات الـ 19
               </h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
@@ -1207,16 +1152,31 @@ export default function AdminDashboard({
 
       {/* MODAL: MEMBER CRUD */}
       {showMemberForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85">
-          <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+          <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 relative max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-black mb-4">{editingMember ? "تعديل مشترك" : "إضافة مشترك جديد"}</h3>
             <form onSubmit={handleSaveMember} className="space-y-4 text-xs">
-              <input type="text" required placeholder="الاسم (إنجليزي)" value={memberForm.fullName} onChange={(e) => setMemberForm({ ...memberForm, fullName: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold" />
-              <input type="text" required placeholder="الاسم (عربي)" value={memberForm.fullNameAr} onChange={(e) => setMemberForm({ ...memberForm, fullNameAr: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold" />
-              <input type="text" required placeholder="رقم البطاقة (e.g. BYD-2026-001)" value={memberForm.cardId} onChange={(e) => setMemberForm({ ...memberForm, cardId: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-mono font-bold" />
+              <div>
+                <label className="block text-gray-400 mb-1">الاسم (إنجليزي)</label>
+                <input type="text" required value={memberForm.fullName} onChange={(e) => setMemberForm({ ...memberForm, fullName: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold" />
+              </div>
+              <div>
+                <label className="block text-gray-400 mb-1">الاسم (عربي)</label>
+                <input type="text" required value={memberForm.fullNameAr} onChange={(e) => setMemberForm({ ...memberForm, fullNameAr: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold" />
+              </div>
+              <div>
+                <label className="block text-gray-400 mb-1">رقم البطاقة الفريد</label>
+                <input type="text" required value={memberForm.cardId} onChange={(e) => setMemberForm({ ...memberForm, cardId: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-mono font-bold" />
+              </div>
+              <div>
+                <label className="block text-gray-400 mb-1">المحافظة</label>
+                <select value={memberForm.province} onChange={(e) => setMemberForm({ ...memberForm, province: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold">
+                  {provincesList.map((p, idx) => <option key={idx} value={p.en}>{p.ar}</option>)}
+                </select>
+              </div>
               <div className="flex justify-end gap-3 pt-4">
-                <button type="button" onClick={() => setShowMemberForm(false)} className="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg">إلغاء</button>
-                <button type="submit" className="px-4 py-2 bg-[#D30014] text-white font-bold rounded-lg">حفظ</button>
+                <button type="button" onClick={() => setShowMemberForm(false)} className="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg cursor-pointer">إلغاء</button>
+                <button type="submit" className="px-4 py-2 bg-[#D30014] text-white font-bold rounded-lg cursor-pointer">حفظ</button>
               </div>
             </form>
           </div>
@@ -1225,15 +1185,27 @@ export default function AdminDashboard({
 
       {/* MODAL: PARTNER CRUD */}
       {showPartnerForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85">
-          <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+          <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 relative max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-black mb-4">{editingPartner ? "تعديل شريك" : "إضافة شريك جديد"}</h3>
             <form onSubmit={handleSavePartner} className="space-y-4 text-xs">
-              <input type="text" required placeholder="اسم الشركة (إنجليزي)" value={partnerForm.companyName} onChange={(e) => setPartnerForm({ ...partnerForm, companyName: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold" />
-              <input type="text" required placeholder="اسم الشركة (عربي)" value={partnerForm.companyNameAr} onChange={(e) => setPartnerForm({ ...partnerForm, companyNameAr: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold" />
+              <div>
+                <label className="block text-gray-400 mb-1">اسم الشركة (إنجليزي)</label>
+                <input type="text" required value={partnerForm.companyName} onChange={(e) => setPartnerForm({ ...partnerForm, companyName: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold" />
+              </div>
+              <div>
+                <label className="block text-gray-400 mb-1">اسم الشركة (عربي)</label>
+                <input type="text" required value={partnerForm.companyNameAr} onChange={(e) => setPartnerForm({ ...partnerForm, companyNameAr: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold" />
+              </div>
+              <div>
+                <label className="block text-gray-400 mb-1">القطاع</label>
+                <select value={partnerForm.sector} onChange={(e) => setPartnerForm({ ...partnerForm, sector: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold">
+                  {sectorsList.map((s, idx) => <option key={idx} value={s.en}>{s.ar}</option>)}
+                </select>
+              </div>
               <div className="flex justify-end gap-3 pt-4">
-                <button type="button" onClick={() => setShowPartnerForm(false)} className="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg">إلغاء</button>
-                <button type="submit" className="px-4 py-2 bg-[#D30014] text-white font-bold rounded-lg">حفظ</button>
+                <button type="button" onClick={() => setShowPartnerForm(false)} className="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg cursor-pointer">إلغاء</button>
+                <button type="submit" className="px-4 py-2 bg-[#D30014] text-white font-bold rounded-lg cursor-pointer">حفظ</button>
               </div>
             </form>
           </div>
@@ -1242,14 +1214,17 @@ export default function AdminDashboard({
 
       {/* MODAL: CARD CRUD */}
       {showCardForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
           <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 relative">
             <h3 className="text-lg font-black mb-4">تسجيل رقم بطاقة</h3>
             <form onSubmit={handleSaveCard} className="space-y-4 text-xs">
-              <input type="text" required placeholder="رقم مسلسل البطاقة" value={cardForm.cardId} onChange={(e) => setCardForm({ ...cardForm, cardId: e.target.value.toUpperCase() })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-mono font-bold" />
+              <div>
+                <label className="block text-gray-400 mb-1">رقم مسلسل البطاقة</label>
+                <input type="text" required value={cardForm.cardId} onChange={(e) => setCardForm({ ...cardForm, cardId: e.target.value.toUpperCase() })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-mono font-bold" />
+              </div>
               <div className="flex justify-end gap-3 pt-4">
-                <button type="button" onClick={() => setShowCardForm(false)} className="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg">إلغاء</button>
-                <button type="submit" className="px-4 py-2 bg-[#D30014] text-white font-bold rounded-lg">حفظ</button>
+                <button type="button" onClick={() => setShowCardForm(false)} className="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg cursor-pointer">إلغاء</button>
+                <button type="submit" className="px-4 py-2 bg-[#D30014] text-white font-bold rounded-lg cursor-pointer">حفظ</button>
               </div>
             </form>
           </div>
