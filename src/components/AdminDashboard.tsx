@@ -308,7 +308,7 @@ export default function AdminDashboard({
       entity1NameAr: (document.getElementById('entity1-name-ar') as HTMLInputElement).value,
       entity1DescEn: (document.getElementById('entity1-desc-en') as HTMLInputElement).value,
       entity1DescAr: (document.getElementById('entity1-desc-ar') as HTMLInputElement).value,
-      entity1Logo: globalEntity1Base64Str, // Consolidated Base64 state
+      entity1Logo: globalEntity1Base64Str,
       entity2NameEn: (document.getElementById('entity2-name-en') as HTMLInputElement).value,
       entity2NameAr: (document.getElementById('entity2-name-ar') as HTMLInputElement).value,
       entity2DescEn: (document.getElementById('entity2-desc-en') as HTMLInputElement).value,
@@ -317,7 +317,6 @@ export default function AdminDashboard({
     };
     localStorage.setItem('BYD_BRAND_PERSISTENT_STATE', JSON.stringify(brandData));
 
-    // Also sync the internal state
     const updatedForm = {
       company1Name: brandData.entity1NameEn,
       company1NameAr: brandData.entity1NameAr,
@@ -462,7 +461,7 @@ export default function AdminDashboard({
     logoUrl: "",
     promoVideoUrl: "",
     province: "Baghdad",
-    expiryDate: "",
+    expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
     status: "Active",
     feePaidIqd: 150000,
     feePaidUsd: 100,
@@ -475,15 +474,12 @@ export default function AdminDashboard({
     discountAr: "10%"
   });
 
-  // Filter States
   const [searchQuery, setSearchQuery] = useState("");
   const [provinceFilter, setProvinceFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
-
-  // Video Preview Modal
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
 
-  // Load All Dashboard Data (FIXED: Fallback gracefully to local storage if API fails)
+  // Load All Dashboard Data
   const loadAllData = async () => {
     setIsLoading(true);
     try {
@@ -558,7 +554,7 @@ export default function AdminDashboard({
         body: JSON.stringify(newViewer)
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok && data.success) {
         if (Array.isArray(data.viewers)) {
           setViewerAccounts(data.viewers);
@@ -574,7 +570,6 @@ export default function AdminDashboard({
           text: lang === "en" ? "Monitoring account created successfully!" : "تم إنشاء حساب المراقبة بنجاح وبشكل فوري!"
         });
       } else {
-        // Fallback local creation if API fails or endpoint doesn't exist
         const updated = [newViewer, ...viewerAccounts];
         setViewerAccounts(updated);
         safeSetLocalStorage("byd-viewer-accounts", JSON.stringify(updated));
@@ -740,7 +735,7 @@ export default function AdminDashboard({
     loadAllData();
   };
 
-  // FIXED: Member save handles local storage seamlessly without crashing if API fails
+  // FIXED: Member save handles local storage seamlessly with robust fallback
   const handleSaveMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!memberForm.fullName || !memberForm.fullNameAr || !memberForm.cardId) {
@@ -769,16 +764,11 @@ export default function AdminDashboard({
         },
         body: JSON.stringify(body)
       });
-
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        alert(t.successSave);
-      }
+      await res.json().catch(() => ({}));
     } catch (err) {
       console.warn("API request failed, executing local fallback save:", err);
     }
 
-    // Always perform robust local storage saving so edits and adds are guaranteed to persist instantly
     try {
       const registered = { ...body, feePaidIqd: body.feePaidIqd !== undefined ? body.feePaidIqd : 25000 };
 
@@ -813,7 +803,7 @@ export default function AdminDashboard({
       window.dispatchEvent(new Event("storage-sync-updated"));
       alert(t.successSave || "تم الحفظ بنجاح!");
     } catch (e) {
-      console.error("Local storage backup error:", e);
+      console.error("Local storage B2C admin backup error:", e);
     }
 
     setShowMemberForm(false);
@@ -1338,615 +1328,618 @@ export default function AdminDashboard({
             }
           </script>
         </body>
-  </html>
-  `);
-  printWindow.document.close();
-};
-
-const handleExportToPDF = () => {
-  if (activeTab === "analytics") {
-    handleExportComprehensiveAnalyticsPDF();
-    return;
-  }
-
-  const isMembers = activeTab === "members";
-  const title = isMembers 
-    ? (lang === "en" ? "BYD VIP B2C Members Registry Ledger" : "سجل المشتركين الفرديين BYD VIP B2C")
-    : (lang === "en" ? "BYD Commercial Partner Registry Ledger" : "سجل الشركاء التجاريين المعتمدين BYD");
-
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) {
-    alert(lang === "en" ? "Please allow popups to export the PDF report." : "يرجى السماح بالنوافذ المنبثقة لتصدير ملف الـ PDF");
-    return;
-  }
-
-  const dataRows = isMembers ? filteredMembers : filteredPartners;
-
-  let tableHeaders = "";
-  let tableRows = "";
-
-  if (isMembers) {
-    tableHeaders = `
-      <th style="text-align: left;">Full Name</th>
-      <th style="text-align: left;">Card ID</th>
-      <th style="text-align: left;">Province</th>
-      <th style="text-align: left;">Reg Date</th>
-      <th style="text-align: left;">Expiry Date</th>
-      <th style="text-align: left;">Status</th>
-      <th style="text-align: left;">Fee (IQD)</th>
-    `;
-    tableRows = (dataRows as Member[]).map(m => `
-      <tr>
-        <td>
-          <div style="font-weight: bold;">${m.fullName || ""}</div>
-          <div style="font-size: 10px; color: #666;">${m.fullNameAr || ""}</div>
-        </td>
-        <td style="font-family: monospace; font-weight: bold;">${m.cardId || "Unassigned"}</td>
-        <td>${m.province || m.provinceAr || ""}</td>
-        <td>${m.registrationDate || ""}</td>
-        <td>${m.expiryDate || ""}</td>
-        <td>
-          <span style="padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; background-color: ${m.status === 'Active' ? '#e6f4ea' : '#fce8e6'}; color: ${m.status === 'Active' ? '#137333' : '#c5221f'};">
-            ${m.status || "Active"}
-          </span>
-        </td>
-        <td style="font-weight: bold;">${(m.feePaidIqd !== undefined ? m.feePaidIqd : 25000).toLocaleString()} IQD</td>
-      </tr>
-    `).join("");
-  } else {
-    tableHeaders = `
-      <th style="text-align: left;">Company Name</th>
-      <th style="text-align: left;">Sector</th>
-      <th style="text-align: left;">Province</th>
-      <th style="text-align: left;">Expiry Date</th>
-      <th style="text-align: left;">Status</th>
-      <th style="text-align: left;">Discount</th>
-      <th style="text-align: left;">Phone</th>
-    `;
-    tableRows = (dataRows as any[]).map(p => `
-      <tr>
-        <td>
-          <div style="font-weight: bold;">${p.companyName || ""}</div>
-          <div style="font-size: 10px; color: #666;">${p.companyNameAr || ""}</div>
-        </td>
-        <td>${p.sector || ""}</td>
-        <td>${p.province || p.provinceAr || ""}</td>
-        <td>${p.expiryDate || ""}</td>
-        <td>
-          <span style="padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; background-color: ${p.status === 'Active' ? '#e6f4ea' : '#fce8e6'}; color: ${p.status === 'Active' ? '#137333' : '#c5221f'};">
-            ${p.status || "Active"}
-          </span>
-        </td>
-        <td style="font-weight: bold; color: #D30014;">${p.discount || "10%"}</td>
-        <td>${p.phone || ""}</td>
-      </tr>
-    `).join("");
-  }
-
-  const totalCount = dataRows.length;
-  const totalRevenue = isMembers 
-    ? (dataRows as Member[]).reduce((sum, m) => sum + (m.feePaidIqd !== undefined ? m.feePaidIqd : 25000), 0)
-    : (dataRows as Partner[]).reduce((sum, p) => sum + (p.feePaidIqd !== undefined ? p.feePaidIqd : 150000), 0);
-
-  const logoHtml = `
-    <div style="display: flex; align-items: center; gap: 14px;">
-      <img src="${systemLogo}" alt="BYD Logo" style="width: 56px; height: 56px; border-radius: 10px; object-fit: cover; border: 2px solid #D30014;" />
-      <div>
-        <div style="font-size: 20px; font-weight: 900; color: #D30014; letter-spacing: 1.5px; line-height: 1.2;">BYD LUXURY VIP NETWORK</div>
-        <div style="font-size: 11px; font-weight: bold; color: #111;">${isMembers ? "سجل المشتركين الفرديين B2C" : "سجل الشركاء التجاريين B2B"}</div>
-      </div>
-    </div>
-  `;
-
-  printWindow.document.write(`
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>${title}</title>
-        <style>
-          @media print {
-            body { padding: 20px !important; }
-            table { page-break-inside: auto; }
-            tr { page-break-inside: avoid; page-break-after: auto; }
-          }
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            color: #333;
-            padding: 40px;
-            line-height: 1.5;
-          }
-          .header-container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 3px solid #D30014;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-          }
-          .report-title {
-            font-size: 16px;
-            font-weight: bold;
-            text-align: right;
-          }
-          .meta-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 20px;
-            margin-bottom: 30px;
-            background-color: #f9f9f9;
-            padding: 20px;
-            border-radius: 8px;
-            border: 1px solid #eee;
-          }
-          .meta-card h4 {
-            margin: 0;
-            font-size: 11px;
-            color: #777;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-          }
-          .meta-card p {
-            margin: 5px 0 0 0;
-            font-size: 18px;
-            font-weight: bold;
-            color: #111;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 30px;
-          }
-          th {
-            background-color: #111;
-            color: white;
-            text-align: left;
-            padding: 12px 15px;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-          }
-          td {
-            padding: 12px 15px;
-            border-bottom: 1px solid #eee;
-            font-size: 13px;
-          }
-          tr:nth-child(even) {
-            background-color: #fcfcfc;
-          }
-          .footer-legal {
-            text-align: center;
-            font-size: 10px;
-            color: #999;
-            margin-top: 50px;
-            border-top: 1px solid #eee;
-            padding-top: 20px;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header-container">
-          ${logoHtml}
-          <div class="report-title">
-            <div>${title}</div>
-            <div style="font-size: 11px; font-weight: normal; color: #666; margin-top: 4px;">Generated: ${new Date().toLocaleString()}</div>
-          </div>
-        </div>
-
-        <div class="meta-grid">
-          <div class="meta-card">
-            <h4>Total Record Count</h4>
-            <p>${totalCount} Records</p>
-          </div>
-          <div class="meta-card">
-            <h4>Aggregated Revenue</h4>
-            <p>${totalRevenue.toLocaleString()} IQD</p>
-          </div>
-          <div class="meta-card">
-            <h4>Portal Integrity</h4>
-            <p>100% Certified</p>
-          </div>
-          <div class="meta-card">
-            <h4>System Node</h4>
-            <p>BYD-NODE-LIVE</p>
-          </div>
-        </div>
-
-        <table>
-          <thead>
-            <tr>
-              ${tableHeaders}
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
-        </table>
-
-        <div class="footer-legal">
-          BYD Luxury Membership Network & Corporate Partnership Systems. All rights reserved &copy; 2026.
-        </div>
-
-        <script>
-          window.onload = function() {
-            window.print();
-          }
-        </script>
-      </body>
-  </html>
-  `);
-  printWindow.document.close();
-};
-
-
-// PARTNER CRUD ACTIONS - FIXED: Local storage fallback for saving partner without failing
-const handleSavePartner = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!partnerForm.companyName || !partnerForm.companyNameAr) {
-    alert(t.errorFill);
-    return;
-  }
-
-  const provinceObj = provincesList.find(p => p.en === partnerForm.province);
-  const provinceAr = provinceObj ? provinceObj.ar : partnerForm.province;
-
-  const sectorObj = sectorsList.find(s => s.en === partnerForm.sector);
-  const sectorAr = sectorObj ? sectorObj.ar : partnerForm.sector;
-
-  const cleanCompanyName = partnerForm.companyName.trim();
-  const fallbackUsername = partnerForm.username?.trim() || (cleanCompanyName.toLowerCase().replace(/[^a-z0-9]/g, "") + "_" + Math.floor(Math.random() * 1000));
-  const fallbackPassword = partnerForm.password?.trim() || "123456";
-  const fallbackEmail = partnerForm.email?.trim() || (fallbackUsername + "@byd-network.com");
-  const fallbackPhone = partnerForm.phone?.trim() || "07700000000";
-  const fallbackDiscount = partnerForm.discount?.trim() || "10%";
-
-  const body = {
-    id: editingPartner?.id || "p-" + Date.now(),
-    ...partnerForm,
-    username: fallbackUsername,
-    password: fallbackPassword,
-    email: fallbackEmail,
-    phone: fallbackPhone,
-    discount: fallbackDiscount,
-    discountEn: partnerForm.discountEn?.trim() || fallbackDiscount,
-    discountAr: partnerForm.discountAr?.trim() || fallbackDiscount,
-    provinceAr,
-    sectorAr
+      </html>
+    `);
+    printWindow.document.close();
   };
 
-  const url = editingPartner ? `/api/partners/${editingPartner.id}` : "/api/partners";
-  const method = editingPartner ? "PUT" : "POST";
+  const handleExportToPDF = () => {
+    if (activeTab === "analytics") {
+      handleExportComprehensiveAnalyticsPDF();
+      return;
+    }
 
-  try {
-    const res = await fetch(url, {
-      method,
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${adminToken}`
-      },
-      body: JSON.stringify(body)
-    });
-    await res.json().catch(() => ({}));
-  } catch (err) {
-    console.warn("API request failed, executing local fallback save:", err);
-  }
+    const isMembers = activeTab === "members";
+    const title = isMembers 
+      ? (lang === "en" ? "BYD VIP B2C Members Registry Ledger" : "سجل المشتركين الفرديين BYD VIP B2C")
+      : (lang === "en" ? "BYD Commercial Partner Registry Ledger" : "سجل الشركاء التجاريين المعتمدين BYD");
 
-  try {
-    const registered = { ...body, feePaidIqd: body.feePaidIqd !== undefined ? body.feePaidIqd : 150000 };
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert(lang === "en" ? "Please allow popups to export the PDF report." : "يرجى السماح بالنوافذ المنبثقة لتصدير ملف الـ PDF");
+      return;
+    }
 
-    const current = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-    const isMatchPartner = (p: any) => {
-      if (editingPartner) {
-        if (editingPartner.id && p.id && p.id === editingPartner.id) return true;
-        if (editingPartner.username && p.username && p.username.toLowerCase() === editingPartner.username.toLowerCase()) return true;
-        if (editingPartner.companyName && p.companyName && p.companyName.toLowerCase() === editingPartner.companyName.toLowerCase()) return true;
-      }
-      if (registered.id && p.id && p.id === registered.id) return true;
-      if (registered.username && p.username && p.username.toLowerCase() === registered.username.toLowerCase()) return true;
-      if (registered.companyName && p.companyName && p.companyName.toLowerCase() === registered.companyName.toLowerCase()) return true;
-      return false;
+    const dataRows = isMembers ? filteredMembers : filteredPartners;
+
+    let tableHeaders = "";
+    let tableRows = "";
+
+    if (isMembers) {
+      tableHeaders = `
+        <th style="text-align: left;">Full Name</th>
+        <th style="text-align: left;">Card ID</th>
+        <th style="text-align: left;">Province</th>
+        <th style="text-align: left;">Reg Date</th>
+        <th style="text-align: left;">Expiry Date</th>
+        <th style="text-align: left;">Status</th>
+        <th style="text-align: left;">Fee (IQD)</th>
+      `;
+      tableRows = (dataRows as Member[]).map(m => `
+        <tr>
+          <td>
+            <div style="font-weight: bold;">${m.fullName || ""}</div>
+            <div style="font-size: 10px; color: #666;">${m.fullNameAr || ""}</div>
+          </td>
+          <td style="font-family: monospace; font-weight: bold;">${m.cardId || "Unassigned"}</td>
+          <td>${m.province || m.provinceAr || ""}</td>
+          <td>${m.registrationDate || ""}</td>
+          <td>${m.expiryDate || ""}</td>
+          <td>
+            <span style="padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; background-color: ${m.status === 'Active' ? '#e6f4ea' : '#fce8e6'}; color: ${m.status === 'Active' ? '#137333' : '#c5221f'};">
+              ${m.status || "Active"}
+            </span>
+          </td>
+          <td style="font-weight: bold;">${(m.feePaidIqd !== undefined ? m.feePaidIqd : 25000).toLocaleString()} IQD</td>
+        </tr>
+      `).join("");
+    } else {
+      tableHeaders = `
+        <th style="text-align: left;">Company Name</th>
+        <th style="text-align: left;">Sector</th>
+        <th style="text-align: left;">Province</th>
+        <th style="text-align: left;">Expiry Date</th>
+        <th style="text-align: left;">Status</th>
+        <th style="text-align: left;">Discount</th>
+        <th style="text-align: left;">Phone</th>
+      `;
+      tableRows = (dataRows as any[]).map(p => `
+        <tr>
+          <td>
+            <div style="font-weight: bold;">${p.companyName || ""}</div>
+            <div style="font-size: 10px; color: #666;">${p.companyNameAr || ""}</div>
+          </td>
+          <td>${p.sector || ""}</td>
+          <td>${p.province || p.provinceAr || ""}</td>
+          <td>${p.expiryDate || ""}</td>
+          <td>
+            <span style="padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; background-color: ${p.status === 'Active' ? '#e6f4ea' : '#fce8e6'}; color: ${p.status === 'Active' ? '#137333' : '#c5221f'};">
+              ${p.status || "Active"}
+            </span>
+          </td>
+          <td style="font-weight: bold; color: #D30014;">${p.discount || "10%"}</td>
+          <td>${p.phone || ""}</td>
+        </tr>
+      `).join("");
+    }
+
+    const totalCount = dataRows.length;
+    const totalRevenue = isMembers 
+      ? (dataRows as Member[]).reduce((sum, m) => sum + (m.feePaidIqd !== undefined ? m.feePaidIqd : 25000), 0)
+      : (dataRows as Partner[]).reduce((sum, p) => sum + (p.feePaidIqd !== undefined ? p.feePaidIqd : 150000), 0);
+
+    const logoHtml = `
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <img src="${systemLogo}" alt="BYD Logo" style="width: 56px; height: 56px; border-radius: 10px; object-fit: cover; border: 2px solid #D30014;" />
+        <div>
+          <div style="font-size: 20px; font-weight: 900; color: #D30014; letter-spacing: 1.5px; line-height: 1.2;">BYD LUXURY VIP NETWORK</div>
+          <div style="font-size: 11px; font-weight: bold; color: #111;">${isMembers ? "سجل المشتركين الفرديين B2C" : "سجل الشركاء التجاريين B2B"}</div>
+        </div>
+      </div>
+    `;
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${title}</title>
+          <style>
+            @media print {
+              body { padding: 20px !important; }
+              table { page-break-inside: auto; }
+              tr { page-break-inside: avoid; page-break-after: auto; }
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+              color: #333;
+              padding: 40px;
+              line-height: 1.5;
+            }
+            .header-container {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              border-bottom: 3px solid #D30014;
+              padding-bottom: 20px;
+              margin-bottom: 30px;
+            }
+            .report-title {
+              font-size: 16px;
+              font-weight: bold;
+              text-align: right;
+            }
+            .meta-grid {
+              display: grid;
+              grid-template-columns: repeat(4, 1fr);
+              gap: 20px;
+              margin-bottom: 30px;
+              background-color: #f9f9f9;
+              padding: 20px;
+              border-radius: 8px;
+              border: 1px solid #eee;
+            }
+            .meta-card h4 {
+              margin: 0;
+              font-size: 11px;
+              color: #777;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+            .meta-card p {
+              margin: 5px 0 0 0;
+              font-size: 18px;
+              font-weight: bold;
+              color: #111;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 30px;
+            }
+            th {
+              background-color: #111;
+              color: white;
+              text-align: left;
+              padding: 12px 15px;
+              font-size: 12px;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            td {
+              padding: 12px 15px;
+              border-bottom: 1px solid #eee;
+              font-size: 13px;
+            }
+            tr:nth-child(even) {
+              background-color: #fcfcfc;
+            }
+            .footer-legal {
+              text-align: center;
+              font-size: 10px;
+              color: #999;
+              margin-top: 50px;
+              border-top: 1px solid #eee;
+              padding-top: 20px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header-container">
+            ${logoHtml}
+            <div class="report-title">
+              <div>${title}</div>
+              <div style="font-size: 11px; font-weight: normal; color: #666; margin-top: 4px;">Generated: ${new Date().toLocaleString()}</div>
+            </div>
+          </div>
+
+          <div class="meta-grid">
+            <div class="meta-card">
+              <h4>Total Record Count</h4>
+              <p>${totalCount} Records</p>
+            </div>
+            <div class="meta-card">
+              <h4>Aggregated Revenue</h4>
+              <p>${totalRevenue.toLocaleString()} IQD</p>
+            </div>
+            <div class="meta-card">
+              <h4>Portal Integrity</h4>
+              <p>100% Certified</p>
+            </div>
+            <div class="meta-card">
+              <h4>System Node</h4>
+              <p>BYD-NODE-LIVE</p>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                ${tableHeaders}
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+
+          <div class="footer-legal">
+            BYD Luxury Membership Network & Corporate Partnership Systems. All rights reserved &copy; 2026.
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+
+  // PARTNER CRUD ACTIONS
+  const handleSavePartner = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!partnerForm.companyName || !partnerForm.companyNameAr) {
+      alert(t.errorFill);
+      return;
+    }
+
+    const provinceObj = provincesList.find(p => p.en === partnerForm.province);
+    const provinceAr = provinceObj ? provinceObj.ar : partnerForm.province;
+
+    const sectorObj = sectorsList.find(s => s.en === partnerForm.sector);
+    const sectorAr = sectorObj ? sectorObj.ar : partnerForm.sector;
+
+    const cleanCompanyName = partnerForm.companyName.trim();
+    const fallbackUsername = partnerForm.username?.trim() || (cleanCompanyName.toLowerCase().replace(/[^a-z0-9]/g, "") + "_" + Math.floor(Math.random() * 1000));
+    const fallbackPassword = partnerForm.password?.trim() || "123456";
+    const fallbackEmail = partnerForm.email?.trim() || (fallbackUsername + "@byd-network.com");
+    const fallbackPhone = partnerForm.phone?.trim() || "07700000000";
+    const fallbackDiscount = partnerForm.discount?.trim() || "10%";
+
+    const body = {
+      id: editingPartner?.id || "p-" + Date.now(),
+      ...partnerForm,
+      username: fallbackUsername,
+      password: fallbackPassword,
+      email: fallbackEmail,
+      phone: fallbackPhone,
+      discount: fallbackDiscount,
+      discountEn: partnerForm.discountEn?.trim() || fallbackDiscount,
+      discountAr: partnerForm.discountAr?.trim() || fallbackDiscount,
+      provinceAr,
+      sectorAr
     };
 
-    const idx = current.findIndex(isMatchPartner);
-    if (idx > -1) {
-      current[idx] = registered;
-    } else {
-      current.push(registered);
+    const url = editingPartner ? `/api/partners/${editingPartner.id}` : "/api/partners";
+    const method = editingPartner ? "PUT" : "POST";
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${adminToken}`
+        },
+        body: JSON.stringify(body)
+      });
+      await res.json().catch(() => ({}));
+    } catch (err) {
+      console.warn("API request failed, executing local fallback save:", err);
     }
-    safeSetLocalStorage("byd-custom-partners", JSON.stringify(current));
 
-    const companiesArray = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
-    const idxC = companiesArray.findIndex(isMatchPartner);
-    if (idxC > -1) {
-      companiesArray[idxC] = registered;
-    } else {
-      companiesArray.push(registered);
-    }
-    safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(companiesArray));
+    try {
+      const registered = { ...body, feePaidIqd: body.feePaidIqd !== undefined ? body.feePaidIqd : 150000 };
 
-    window.dispatchEvent(new Event("storage-sync-updated"));
-    alert(t.successSave || "تم الحفظ بنجاح!");
-  } catch (e) {
-    console.error("Local storage B2B admin backup error:", e);
-  }
+      const current = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
+      const isMatchPartner = (p: any) => {
+        if (editingPartner) {
+          if (editingPartner.id && p.id && p.id === editingPartner.id) return true;
+          if (editingPartner.username && p.username && p.username.toLowerCase() === editingPartner.username.toLowerCase()) return true;
+          if (editingPartner.companyName && p.companyName && p.companyName.toLowerCase() === editingPartner.companyName.toLowerCase()) return true;
+        }
+        if (registered.id && p.id && p.id === registered.id) return true;
+        if (registered.username && p.username && p.username.toLowerCase() === registered.username.toLowerCase()) return true;
+        if (registered.companyName && p.companyName && p.companyName.toLowerCase() === registered.companyName.toLowerCase()) return true;
+        return false;
+      };
 
-  setShowPartnerForm(false);
-  setEditingPartner(null);
-  resetPartnerForm();
-  loadAllData();
-};
-
-const handleEditPartnerClick = (partner: Partner) => {
-  setEditingPartner(partner);
-  setPartnerForm({
-    companyName: partner.companyName,
-    companyNameAr: partner.companyNameAr,
-    sector: partner.sector,
-    logoUrl: partner.logoUrl,
-    promoVideoUrl: partner.promoVideoUrl,
-    province: partner.province,
-    expiryDate: partner.expiryDate,
-    status: partner.status,
-    feePaidIqd: partner.feePaidIqd || (partner.feePaidUsd ? partner.feePaidUsd * 1500 : 150000),
-    feePaidUsd: partner.feePaidUsd || 100,
-    username: partner.username || "",
-    password: partner.password || "",
-    email: partner.email || "",
-    phone: partner.phone || "",
-    discount: partner.discount || "10%",
-    discountEn: partner.discountEn || partner.discount || "10%",
-    discountAr: partner.discountAr || partner.discount || "10%"
-  });
-  setShowPartnerForm(true);
-};
-
-const handleTogglePartnerStatus = async (partner: Partner) => {
-  const currentActive = isPartnerActive(partner);
-  const newStatus = currentActive ? "Inactive" : "Active";
-
-  try {
-    await fetch(`/api/partners/${encodeURIComponent(partner.id || partner.username || partner.companyName)}`, {
-      method: "PUT",
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${adminToken}`
-      },
-      body: JSON.stringify({ ...partner, status: newStatus })
-    });
-  } catch (err) {
-    console.error("Error toggling partner status:", err);
-  }
-
-  try {
-    const p1 = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-    const p2 = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
-
-    const updatedP1 = p1.map((item: any) => {
-      if (item.id === partner.id || (partner.username && item.username === partner.username) || (partner.companyName && item.companyName === partner.companyName)) {
-        return { ...item, status: newStatus };
+      const idx = current.findIndex(isMatchPartner);
+      if (idx > -1) {
+        current[idx] = registered;
+      } else {
+        current.push(registered);
       }
-      return item;
-    });
-    const updatedP2 = p2.map((item: any) => {
-      if (item.id === partner.id || (partner.username && item.username === partner.username) || (partner.companyName && item.companyName === partner.companyName)) {
-        return { ...item, status: newStatus };
+      safeSetLocalStorage("byd-custom-partners", JSON.stringify(current));
+
+      const companiesArray = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
+      const idxC = companiesArray.findIndex(isMatchPartner);
+      if (idxC > -1) {
+        companiesArray[idxC] = registered;
+      } else {
+        companiesArray.push(registered);
       }
-      return item;
-    });
+      safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(companiesArray));
 
-    safeSetLocalStorage("byd-custom-partners", JSON.stringify(updatedP1));
-    safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(updatedP2));
-  } catch (e) {
-    console.error(e);
-  }
-
-  setPartners(prev => prev.map(p => {
-    if (p.id === partner.id || (partner.username && p.username === partner.username) || (partner.companyName && p.companyName === partner.companyName)) {
-      return { ...p, status: newStatus };
+      window.dispatchEvent(new Event("storage-sync-updated"));
+      alert(t.successSave || "تم الحفظ بنجاح!");
+    } catch (e) {
+      console.error("Local storage B2B admin backup error:", e);
     }
-    return p;
-  }));
-  setLocalPartnersList(prev => prev.map(p => {
-    if (p.id === partner.id || (partner.username && p.username === partner.username) || (partner.companyName && p.companyName === partner.companyName)) {
-      return { ...p, status: newStatus };
-    }
-    return p;
-  }));
 
-  window.dispatchEvent(new Event("storage-sync-updated"));
-  loadAllData();
-};
-
-const handleDeletePartner = async (id: string) => {
-  if (!confirm(t.confirmDelete)) return;
-
-  const partnerToDelete = partners.find(p => p.id === id || p.username === id || p.companyName === id) ||
-                            localPartnersList.find((p: any) => p.id === id || p.username === id || p.companyName === id);
-  
-  const targetId = partnerToDelete?.id || id;
-  const username = partnerToDelete?.username;
-  const companyName = partnerToDelete?.companyName;
-
-  try {
-    const deletedList = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]");
-    if (targetId && !deletedList.includes(targetId)) deletedList.push(targetId);
-    if (username && !deletedList.includes(username)) deletedList.push(username);
-    if (companyName && !deletedList.includes(companyName)) deletedList.push(companyName);
-    if (id && !deletedList.includes(id)) deletedList.push(id);
-    safeSetLocalStorage("BYD_DELETED_PARTNERS", JSON.stringify(deletedList));
-
-    const isMatch = (p: any) => p.id === targetId || p.id === id || (username && p.username === username) || (companyName && p.companyName === companyName);
-
-    const syncBydCompanies = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]").filter((p: any) => !isMatch(p));
-    const syncCustomPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]").filter((p: any) => !isMatch(p));
-
-    safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(syncBydCompanies));
-    safeSetLocalStorage("byd-custom-partners", JSON.stringify(syncCustomPartners));
-  } catch (e) {
-    console.error("Localstorage partner deletion error:", e);
-  }
-
-  setPartners(prev => prev.filter(p => p.id !== targetId && p.id !== id && (!username || p.username !== username) && (!companyName || p.companyName !== companyName)));
-  setLocalPartnersList(prev => prev.filter((p: any) => p.id !== targetId && p.id !== id && (!username || p.username !== username) && (!companyName || p.companyName !== companyName)));
-
-  try {
-    await fetch(`/api/partners/${encodeURIComponent(targetId || username || companyName || id)}`, {
-      method: "DELETE",
-      headers: { "Authorization": `Bearer ${adminToken}` }
-    });
-  } catch (err) {
-    console.error("Delete partner API error:", err);
-  }
-
-  window.dispatchEvent(new Event("storage-sync-updated"));
-  loadAllData();
-};
-
-const resetPartnerForm = () => {
-  setPartnerForm({
-    companyName: "",
-    companyNameAr: "",
-    sector: "Restaurant",
-    logoUrl: "",
-    promoVideoUrl: "",
-    province: "Baghdad",
-    expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-    status: "Active",
-    feePaidIqd: 150000,
-    feePaidUsd: 100,
-    username: "",
-    password: "",
-    email: "",
-    phone: "",
-    discount: "10%",
-    discountEn: "10%",
-    discountAr: "10%"
-  });
-};
-
-
-// CARD CRUD ACTIONS - FIXED: Local storage fallback to prevent Vercel API network errors
-const handleSaveCard = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!cardForm.cardId) {
-    alert(lang === "en" ? "Please fill Card Serial ID" : "يرجى إدخال رقم مسلسل البطاقة");
-    return;
-  }
-
-  const url = editingCard ? `/api/cards/${editingCard.id}` : "/api/cards";
-  const method = editingCard ? "PUT" : "POST";
-
-  try {
-    const res = await fetch(url, {
-      method,
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${adminToken}`
-      },
-      body: JSON.stringify(cardForm)
-    });
-    await res.json().catch(() => ({}));
-  } catch (err) {
-    console.warn("API request failed, executing local fallback save for card:", err);
-  }
-
-  try {
-    const cardsList = JSON.parse(localStorage.getItem("byd-cards") || "[]");
-    const idx = cardsList.findIndex((c: any) => c && c.cardId === cardForm.cardId);
-    const newCard = { id: editingCard?.id || "c-" + Date.now(), ...cardForm };
-    if (idx > -1) cardsList[idx] = newCard; else cardsList.unshift(newCard);
-    safeSetLocalStorage("byd-cards", JSON.stringify(cardsList));
-    setCards(cardsList);
-
-    window.dispatchEvent(new Event("storage-sync-updated"));
-    alert(lang === "en" ? "Card saved successfully!" : "تم حفظ البطاقة بنجاح!");
-    setShowCardForm(false);
-    setEditingCard(null);
-    resetCardForm();
+    setShowPartnerForm(false);
+    setEditingPartner(null);
+    resetPartnerForm();
     loadAllData();
-  } catch (err) {
-    console.error(err);
-    alert(lang === "en" ? "Network error saving card" : "خطأ في حفظ البطاقة محلياً");
-  }
-};
+  };
 
-const handleDeleteCard = async (id: string) => {
-  if (!window.confirm(lang === "en" ? "Are you sure you want to delete this Card?" : "هل أنت متأكد من حذف هذه البطاقة؟")) {
-    return;
-  }
-
-  try {
-    const cardsList = JSON.parse(localStorage.getItem("byd-cards") || "[]").filter((c: any) => c.id !== id);
-    safeSetLocalStorage("byd-cards", JSON.stringify(cardsList));
-    setCards(cardsList);
-    window.dispatchEvent(new Event("storage-sync-updated"));
-  } catch (e) {
-    console.error(e);
-  }
-
-  try {
-    await fetch(`/api/cards/${id}`, {
-      method: "DELETE",
-      headers: { "Authorization": `Bearer ${adminToken}` }
+  const handleEditPartnerClick = (partner: Partner) => {
+    setEditingPartner(partner);
+    setPartnerForm({
+      companyName: partner.companyName,
+      companyNameAr: partner.companyNameAr,
+      sector: partner.sector,
+      logoUrl: partner.logoUrl,
+      promoVideoUrl: partner.promoVideoUrl,
+      province: partner.province,
+      expiryDate: partner.expiryDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      status: partner.status,
+      feePaidIqd: partner.feePaidIqd || (partner.feePaidUsd ? partner.feePaidUsd * 1500 : 150000),
+      feePaidUsd: partner.feePaidUsd || 100,
+      username: partner.username || "",
+      password: partner.password || "",
+      email: partner.email || "",
+      phone: partner.phone || "",
+      discount: partner.discount || "10%",
+      discountEn: partner.discountEn || partner.discount || "10%",
+      discountAr: partner.discountAr || partner.discount || "10%"
     });
-  } catch (err) {
-    console.error(err);
-  }
-  loadAllData();
-};
+    setShowPartnerForm(true);
+  };
 
-const handleEditCard = (card: any) => {
-  setEditingCard(card);
-  setCardForm({
-    cardId: card.cardId,
-    status: card.status,
-    memberId: card.memberId || ""
-  });
-  setShowCardForm(true);
-};
+  const handleTogglePartnerStatus = async (partner: Partner) => {
+    const currentActive = isPartnerActive(partner);
+    const newStatus = currentActive ? "Inactive" : "Active";
 
-const handleGenerateSequentialCard = () => {
-  let maxSuffix = 10; 
-  cards.forEach((c: any) => {
-    const match = c.cardId.match(/(\d+)$/);
-    if (match) {
-      const val = parseInt(match[1]);
-      if (val > maxSuffix) maxSuffix = val;
+    try {
+      await fetch(`/api/partners/${encodeURIComponent(partner.id || partner.username || partner.companyName)}`, {
+        method: "PUT",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${adminToken}`
+        },
+        body: JSON.stringify({ ...partner, status: newStatus })
+      });
+    } catch (err) {
+      console.error("Error toggling partner status:", err);
     }
-  });
 
-  const nextSuffix = maxSuffix + 1;
-  const paddedSuffix = String(nextSuffix).padStart(3, "0");
-  const nextCardId = `BYD-2026-${paddedSuffix}`;
+    try {
+      const p1 = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
+      const p2 = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
 
-  setCardForm({
-    cardId: nextCardId,
-    status: "Active",
-    memberId: ""
-  });
-  setEditingCard(null);
-  setShowCardForm(true);
-};
+      const updatedP1 = p1.map((item: any) => {
+        if (item.id === partner.id || (partner.username && item.username === partner.username) || (partner.companyName && item.companyName === partner.companyName)) {
+          return { ...item, status: newStatus };
+        }
+        return item;
+      });
+      const updatedP2 = p2.map((item: any) => {
+        if (item.id === partner.id || (partner.username && item.username === partner.username) || (partner.companyName && item.companyName === partner.companyName)) {
+          return { ...item, status: newStatus };
+        }
+        return item;
+      });
 
-const resetCardForm = () => {
-  setCardForm({
-    cardId: "",
-    status: "Active",
-    memberId: ""
-  });
-};
+      safeSetLocalStorage("byd-custom-partners", JSON.stringify(updatedP1));
+      safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(updatedP2));
+    } catch (e) {
+      console.error(e);
+    }
 
-const handleClearAllData = async () => {
-  if (!confirm((t as any).confirmClearAll || "Are you sure you want to permanently clear all subscriber and company data?")) {
-    return;
-  }
+    setPartners(prev => prev.map(p => {
+      if (p.id === partner.id || (partner.username && p.username === partner.username) || (partner.companyName && p.companyName === partner.companyName)) {
+        return { ...p, status: newStatus };
+      }
+      return p;
+    }));
+    setLocalPartnersList(prev => prev.map(p => {
+      if (p.id === partner.id || (partner.username && p.username === partner.username) || (partner.companyName && p.companyName === partner.companyName)) {
+        return { ...p, status: newStatus };
+      }
+      return p;
+    }));
 
-  try {
-    const res = await fetch("/api/admin/clear-all-data", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${adminToken}`
+    window.dispatchEvent(new Event("storage-sync-updated"));
+    loadAllData();
+  };
+
+  const handleDeletePartner = async (id: string) => {
+    if (!confirm(t.confirmDelete)) return;
+
+    const partnerToDelete = partners.find(p => p.id === id || p.username === id || p.companyName === id) ||
+                            localPartnersList.find((p: any) => p.id === id || p.username === id || p.companyName === id);
+    
+    const targetId = partnerToDelete?.id || id;
+    const username = partnerToDelete?.username;
+    const companyName = partnerToDelete?.companyName;
+
+    try {
+      const deletedList = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]");
+      if (targetId && !deletedList.includes(targetId)) deletedList.push(targetId);
+      if (username && !deletedList.includes(username)) deletedList.push(username);
+      if (companyName && !deletedList.includes(companyName)) deletedList.push(companyName);
+      if (id && !deletedList.includes(id)) deletedList.push(id);
+      safeSetLocalStorage("BYD_DELETED_PARTNERS", JSON.stringify(deletedList));
+
+      const isMatch = (p: any) => p.id === targetId || p.id === id || (username && p.username === username) || (companyName && p.companyName === companyName);
+
+      const syncBydCompanies = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]").filter((p: any) => !isMatch(p));
+      const syncCustomPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]").filter((p: any) => !isMatch(p));
+
+      safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(syncBydCompanies));
+      safeSetLocalStorage("byd-custom-partners", JSON.stringify(syncCustomPartners));
+    } catch (e) {
+      console.error("Localstorage partner deletion error:", e);
+    }
+
+    setPartners(prev => prev.filter(p => p.id !== targetId && p.id !== id && (!username || p.username !== username) && (!companyName || p.companyName !== companyName)));
+    setLocalPartnersList(prev => prev.filter((p: any) => p.id !== targetId && p.id !== id && (!username || p.username !== username) && (!companyName || p.companyName !== companyName)));
+
+    try {
+      await fetch(`/api/partners/${encodeURIComponent(targetId || username || companyName || id)}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${adminToken}` }
+      });
+    } catch (err) {
+      console.error("Delete partner API error:", err);
+    }
+
+    window.dispatchEvent(new Event("storage-sync-updated"));
+    loadAllData();
+  };
+
+  const resetPartnerForm = () => {
+    setPartnerForm({
+      companyName: "",
+      companyNameAr: "",
+      sector: "Restaurant",
+      logoUrl: "",
+      promoVideoUrl: "",
+      province: "Baghdad",
+      expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      status: "Active",
+      feePaidIqd: 150000,
+      feePaidUsd: 100,
+      username: "",
+      password: "",
+      email: "",
+      phone: "",
+      discount: "10%",
+      discountEn: "10%",
+      discountAr: "10%"
+    });
+  };
+
+
+  // CARD CRUD ACTIONS
+  const handleSaveCard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cardForm.cardId) {
+      alert(lang === "en" ? "Please fill Card Serial ID" : "يرجى إدخال رقم مسلسل البطاقة");
+      return;
+    }
+
+    const url = editingCard ? `/api/cards/${editingCard.id}` : "/api/cards";
+    const method = editingCard ? "PUT" : "POST";
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${adminToken}`
+        },
+        body: JSON.stringify(cardForm)
+      });
+      await res.json().catch(() => ({}));
+    } catch (err) {
+      console.warn("API request failed, executing local fallback save for card:", err);
+    }
+
+    try {
+      const cardsList = JSON.parse(localStorage.getItem("byd-cards") || "[]");
+      const idx = cardsList.findIndex((c: any) => c && c.cardId === cardForm.cardId);
+      const newCard = { id: editingCard?.id || "c-" + Date.now(), ...cardForm };
+      if (idx > -1) cardsList[idx] = newCard; else cardsList.unshift(newCard);
+      safeSetLocalStorage("byd-cards", JSON.stringify(cardsList));
+      setCards(cardsList);
+
+      window.dispatchEvent(new Event("storage-sync-updated"));
+      alert(lang === "en" ? "Card saved successfully!" : "تم حفظ البطاقة بنجاح!");
+      setShowCardForm(false);
+      setEditingCard(null);
+      resetCardForm();
+      loadAllData();
+    } catch (err) {
+      console.error(err);
+      alert(lang === "en" ? "Network error saving card" : "خطأ في حفظ البطاقة محلياً");
+    }
+  };
+
+  const handleDeleteCard = async (id: string) => {
+    if (!window.confirm(lang === "en" ? "Are you sure you want to delete this Card?" : "هل أنت متأكد من حذف هذه البطاقة؟")) {
+      return;
+    }
+
+    try {
+      const cardsList = JSON.parse(localStorage.getItem("byd-cards") || "[]").filter((c: any) => c.id !== id);
+      safeSetLocalStorage("byd-cards", JSON.stringify(cardsList));
+      setCards(cardsList);
+      window.dispatchEvent(new Event("storage-sync-updated"));
+    } catch (e) {
+      console.error(e);
+    }
+
+    try {
+      await fetch(`/api/cards/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${adminToken}` }
+      });
+    } catch (err) {
+      console.error(err);
+    }
+    loadAllData();
+  };
+
+  const handleEditCard = (card: any) => {
+    setEditingCard(card);
+    setCardForm({
+      cardId: card.cardId,
+      status: card.status,
+      memberId: card.memberId || ""
+    });
+    setShowCardForm(true);
+  };
+
+  const handleGenerateSequentialCard = () => {
+    let maxSuffix = 10; 
+    cards.forEach((c: any) => {
+      const match = c.cardId.match(/(\d+)$/);
+      if (match) {
+        const val = parseInt(match[1]);
+        if (val > maxSuffix) maxSuffix = val;
       }
     });
+
+    const nextSuffix = maxSuffix + 1;
+    const paddedSuffix = String(nextSuffix).padStart(3, "0");
+    const nextCardId = `BYD-2026-${paddedSuffix}`;
+
+    setCardForm({
+      cardId: nextCardId,
+      status: "Active",
+      memberId: ""
+    });
+    setEditingCard(null);
+    setShowCardForm(true);
+  };
+
+  const resetCardForm = () => {
+    setCardForm({
+      cardId: "",
+      status: "Active",
+      memberId: ""
+    });
+  };
+
+  const handleClearAllData = async () => {
+    if (!confirm((t as any).confirmClearAll || "Are you sure you want to permanently clear all subscriber and company data?")) {
+      return;
+    }
+
+    try {
+      await fetch("/api/admin/clear-all-data", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${adminToken}`
+        }
+      });
+    } catch (err) {
+      console.warn("API clear failed, continuing local clear:", err);
+    }
 
     localStorage.setItem("byd-custom-members", JSON.stringify([]));
     localStorage.setItem("BYD_USERS", JSON.stringify([]));
@@ -1963,352 +1956,181 @@ const handleClearAllData = async () => {
 
     alert((t as any).successClearAll || "All records have been cleared successfully!");
     loadAllData();
-  } catch (err) {
-    console.error(err);
-    localStorage.setItem("byd-custom-members", JSON.stringify([]));
-    localStorage.setItem("BYD_USERS", JSON.stringify([]));
-    localStorage.setItem("byd-custom-partners", JSON.stringify([]));
-    localStorage.setItem("BYD_COMPANIES", JSON.stringify([]));
-    localStorage.setItem("byd-cards", JSON.stringify([]));
-    setLocalMembersList([]);
-    setLocalPartnersList([]);
-    setCards([]);
-    window.dispatchEvent(new Event("storage-sync-updated"));
-    alert("تم مسح كافة البيانات محلياً بنجاح!");
-    loadAllData();
-  }
-};
-
-
-const isPartnerActive = (p: any) => {
-  if (!p.status) return true;
-  const s = String(p.status).toLowerCase();
-  return s === "active" || s === "نشط";
-};
-
-const isMemberActive = (m: any) => {
-  if (!m.status) return true;
-  const s = String(m.status).toLowerCase();
-  return s === "active" || s === "نشط";
-};
-
-// Combine server array and local storage array into unified lists with deletion filtering
-const allPartners = React.useMemo(() => {
-  const deletedList = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]").map((s: string) => String(s).toLowerCase());
-  const isDeleted = (p: any) => {
-    const cn = (p.companyName || "").toLowerCase();
-    const un = (p.username || "").toLowerCase();
-    const id = (p.id || "").toLowerCase();
-    return deletedList.includes(cn) || deletedList.includes(un) || deletedList.includes(id);
   };
 
-  const list: Partner[] = partners.filter(sp => !isDeleted(sp));
-  localPartnersList.forEach((lp: any) => {
-    if (isDeleted(lp)) return;
-    const idx = list.findIndex((sp: any) => 
-      (lp.id && sp.id && lp.id === sp.id) ||
-      (lp.username && sp.username && lp.username.toLowerCase() === sp.username.toLowerCase()) ||
-      (lp.companyName && sp.companyName && lp.companyName.toLowerCase() === sp.companyName.toLowerCase())
-    );
-    if (idx > -1) {
-      list[idx] = { ...list[idx], ...lp };
-    } else {
-      list.push(lp);
-    }
-  });
-  return list;
-}, [partners, localPartnersList]);
 
-const allMembers = React.useMemo(() => {
-  const deletedList = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]").map((s: string) => String(s).toLowerCase());
-  const isDeleted = (m: any) => {
-    const cardId = (m.cardId || "").toLowerCase();
-    const id = (m.id || "").toLowerCase();
-    return deletedList.includes(cardId) || deletedList.includes(id);
+  const isPartnerActive = (p: any) => {
+    if (!p.status) return true;
+    const s = String(p.status).toLowerCase();
+    return s === "active" || s === "نشط";
   };
 
-  const list: Member[] = members.filter(sm => !isDeleted(sm));
-  localMembersList.forEach((lm: any) => {
-    if (isDeleted(lm)) return;
-    const idx = list.findIndex((sm: any) => 
-      (lm.id && sm.id && lm.id === sm.id) ||
-      (lm.cardId && sm.cardId && lm.cardId.toLowerCase() === sm.cardId.toLowerCase())
-    );
-    if (idx > -1) {
-      list[idx] = { ...list[idx], ...lm };
-    } else {
-      list.push(lm);
-    }
-  });
-  return list;
-}, [members, localMembersList]);
-
-// Real-time dynamic financial calculations from reactive unified state
-const activeLocalMembers = allMembers.filter(isMemberActive);
-const activeLocalPartners = allPartners.filter(isPartnerActive);
-
-// Live province breakdown computed directly from active local state
-const liveProvinceBreakdown = React.useMemo(() => {
-  const iraqiProvinces = [
-    "Baghdad", "Erbil", "Basra", "Nineveh", "Sulaymaniyah", 
-    "Duhok", "Kirkuk", "Salah al-Din", "Diyala", "Anbar", 
-    "Babylon", "Karbala", "Najaf", "Qadisiyah", "Muthanna", 
-    "Thi Qar", "Maysan", "Wasit", "Halabja"
-  ];
-
-  const iraqiProvincesAr: { [key: string]: string } = {
-    Baghdad: "بغداد", Erbil: "أربيل", Basra: "البصرة", Nineveh: "نينوى",
-    Sulaymaniyah: "السليمانية", Duhok: "دهوك", Kirkuk: "كركوك",
-    "Salah al-Din": "صلاح الدين", Diyala: "ديالى", Anbar: "الأنبار",
-    Babylon: "بابل", Karbala: "كربلاء", Najaf: "النجف", Qadisiyah: "القادسية",
-    Muthanna: "المثنى", "Thi Qar": "ذي قار", Maysan: "ميسان", Wasit: "واسط", Halabja: "حلبجة"
+  const isMemberActive = (m: any) => {
+    if (!m.status) return true;
+    const s = String(m.status).toLowerCase();
+    return s === "active" || s === "نشط";
   };
 
-  return iraqiProvinces.map(prov => {
-    const provAr = iraqiProvincesAr[prov] || prov;
-
-    const provPartners = activeLocalPartners.filter((p: Partner) => 
-      (p.province === prov || p.province === provAr || p.provinceAr === provAr || p.provinceAr === prov)
-    );
-
-    const provMembers = activeLocalMembers.filter((m: Member) => 
-      (m.province === prov || m.province === provAr || m.provinceAr === provAr || m.provinceAr === prov)
-    );
-
-    const collectedB2B = provPartners.reduce((sum: number, p: Partner) => {
-      const fee = p.feePaidIqd !== undefined && p.feePaidIqd !== null ? Number(p.feePaidIqd) : (p.feePaidUsd ? Number(p.feePaidUsd) * 1500 : 150000);
-      return sum + (isNaN(fee) ? 150000 : fee);
-    }, 0);
-
-    const collectedB2C = provMembers.reduce((sum: number, m: Member) => {
-      const fee = m.feePaidIqd !== undefined && m.feePaidIqd !== null ? Number(m.feePaidIqd) : (m.feePaidUsd ? Number(m.feePaidUsd) * 1500 : 25000);
-      return sum + (isNaN(fee) ? 25000 : fee);
-    }, 0);
-
-    return {
-      province: prov,
-      provinceAr: provAr,
-      partners: provPartners.length,
-      users: provMembers.length,
-      collectedB2B,
-      collectedB2C,
-      targetPartners: 10,
-      targetUsers: 100
+  // Combine server array and local storage array into unified lists with deletion filtering
+  const allPartners = React.useMemo(() => {
+    const deletedList = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]").map((s: string) => String(s).toLowerCase());
+    const isDeleted = (p: any) => {
+      const cn = (p.companyName || "").toLowerCase();
+      const un = (p.username || "").toLowerCase();
+      const id = (p.id || "").toLowerCase();
+      return deletedList.includes(cn) || deletedList.includes(un) || deletedList.includes(id);
     };
-  });
-}, [activeLocalMembers, activeLocalPartners]);
 
-// FILTERING LOGIC (Real-time Instant Search & Matching)
-const filteredMembers = React.useMemo(() => {
-  const q = (searchQuery || "").trim().toLowerCase();
-  return allMembers.filter(m => {
-    const matchesSearch = !q ||
-      (m.fullName && m.fullName.toLowerCase().includes(q)) ||
-      (m.fullNameAr && m.fullNameAr.toLowerCase().includes(q)) ||
-      (m.cardId && m.cardId.toLowerCase().includes(q)) ||
-      (m.id && m.id.toLowerCase().includes(q)) ||
-      (m.phone && m.phone.toLowerCase().includes(q)) ||
-      (m.nearestLandmark && m.nearestLandmark.toLowerCase().includes(q));
-    
-    const matchesProvince = provinceFilter === "All" || m.province === provinceFilter || m.provinceAr === provinceFilter;
-    const matchesStatus = statusFilter === "All" || m.status === statusFilter || (statusFilter === "Active" && isMemberActive(m)) || (statusFilter === "Inactive" && !isMemberActive(m));
+    const list: Partner[] = partners.filter(sp => !isDeleted(sp));
+    localPartnersList.forEach((lp: any) => {
+      if (isDeleted(lp)) return;
+      const idx = list.findIndex((sp: any) => 
+        (lp.id && sp.id && lp.id === sp.id) ||
+        (lp.username && sp.username && lp.username.toLowerCase() === sp.username.toLowerCase()) ||
+        (lp.companyName && sp.companyName && lp.companyName.toLowerCase() === sp.companyName.toLowerCase())
+      );
+      if (idx > -1) {
+        list[idx] = { ...list[idx], ...lp };
+      } else {
+        list.push(lp);
+      }
+    });
+    return list;
+  }, [partners, localPartnersList]);
 
-    return matchesSearch && matchesProvince && matchesStatus;
-  });
-}, [allMembers, searchQuery, provinceFilter, statusFilter]);
+  const allMembers = React.useMemo(() => {
+    const deletedList = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]").map((s: string) => String(s).toLowerCase());
+    const isDeleted = (m: any) => {
+      const cardId = (m.cardId || "").toLowerCase();
+      const id = (m.id || "").toLowerCase();
+      return deletedList.includes(cardId) || deletedList.includes(id);
+    };
 
-const filteredPartners = React.useMemo(() => {
-  const q = (searchQuery || "").trim().toLowerCase();
-  return allPartners.filter(p => {
-    const matchesSearch = !q ||
-      (p.companyName && p.companyName.toLowerCase().includes(q)) ||
-      (p.companyNameAr && p.companyNameAr.toLowerCase().includes(q)) ||
-      (p.sector && p.sector.toLowerCase().includes(q)) ||
-      (p.sectorAr && p.sectorAr.toLowerCase().includes(q)) ||
-      (p.username && p.username.toLowerCase().includes(q)) ||
-      (p.phone && p.phone.toLowerCase().includes(q)) ||
-      (p.id && p.id.toLowerCase().includes(q));
-    
-    const matchesProvince = provinceFilter === "All" || p.province === provinceFilter || p.provinceAr === provinceFilter;
-    const matchesStatus = statusFilter === "All" || p.status === statusFilter || (statusFilter === "Active" && isPartnerActive(p)) || (statusFilter === "Inactive" && !isPartnerActive(p));
+    const list: Member[] = members.filter(sm => !isDeleted(sm));
+    localMembersList.forEach((lm: any) => {
+      if (isDeleted(lm)) return;
+      const idx = list.findIndex((sm: any) => 
+        (lm.id && sm.id && lm.id === sm.id) ||
+        (lm.cardId && sm.cardId && lm.cardId.toLowerCase() === sm.cardId.toLowerCase())
+      );
+      if (idx > -1) {
+        list[idx] = { ...list[idx], ...lm };
+      } else {
+        list.push(lm);
+      }
+    });
+    return list;
+  }, [members, localMembersList]);
 
-    return matchesSearch && matchesProvince && matchesStatus;
-  });
-}, [allPartners, searchQuery, provinceFilter, statusFilter]);
+  // Real-time dynamic financial calculations from reactive unified state
+  const activeLocalMembers = allMembers.filter(isMemberActive);
+  const activeLocalPartners = allPartners.filter(isPartnerActive);
 
+  // Live province breakdown computed directly from active local state
+  const liveProvinceBreakdown = React.useMemo(() => {
+    const iraqiProvinces = [
+      "Baghdad", "Erbil", "Basra", "Nineveh", "Sulaymaniyah", 
+      "Duhok", "Kirkuk", "Salah al-Din", "Diyala", "Anbar", 
+      "Babylon", "Karbala", "Najaf", "Qadisiyah", "Muthanna", 
+      "Thi Qar", "Maysan", "Wasit", "Halabja"
+    ];
 
-// Collected B2B Revenue = Sum of actual B2B fees paid by active partners (Default 150,000 IQD)
-const localB2BCollected = activeLocalPartners.reduce((sum: number, p: any) => {
-  const fee = p.feePaidIqd !== undefined && p.feePaidIqd !== null
-    ? Number(p.feePaidIqd)
-    : (p.feePaidUsd ? Number(p.feePaidUsd) * 1500 : 150000);
-  return sum + (isNaN(fee) ? 150000 : fee);
-}, 0);
+    const iraqiProvincesAr: { [key: string]: string } = {
+      Baghdad: "بغداد", Erbil: "أربيل", Basra: "البصرة", Nineveh: "نينوى",
+      Sulaymaniyah: "السليمانية", Duhok: "دهوك", Kirkuk: "كركوك",
+      "Salah al-Din": "صلاح الدين", Diyala: "ديالى", Anbar: "الأنبار",
+      Babylon: "بابل", Karbala: "كربلاء", Najaf: "النجف", Qadisiyah: "القادسية",
+      Muthanna: "المثنى", "Thi Qar": "ذي قار", Maysan: "ميسان", Wasit: "واسط", Halabja: "حلبجة"
+    };
 
-// Collected B2C Revenue = Sum of actual B2C fees paid by active members (Default 25,000 IQD)
-const localB2CCollected = activeLocalMembers.reduce((sum: number, m: any) => {
-  const fee = m.feePaidIqd !== undefined && m.feePaidIqd !== null
-    ? Number(m.feePaidIqd)
-    : (m.feePaidUsd ? Number(m.feePaidUsd) * 1500 : 25000);
-  return sum + (isNaN(fee) ? 25000 : fee);
-}, 0);
+    return iraqiProvinces.map(prov => {
+      const provAr = iraqiProvincesAr[prov] || prov;
 
-// FINANCIAL DATA PREPARATION FOR RECHARTS
-const getRevenueComparisonData = () => {
-  return [
-    {
-      name: lang === "en" ? "B2B (Partners)" : "الشركات (B2B)",
-      Collected: localB2BCollected,
-      Target: 28500000
-    },
-    {
-      name: lang === "en" ? "B2C (Members)" : "الأعضاء (B2C)",
-      Collected: localB2CCollected,
-      Target: 95000000
-    }
-  ];
-};
+      const provPartners = activeLocalPartners.filter((p: Partner) => 
+        (p.province === prov || p.province === provAr || p.provinceAr === provAr || p.provinceAr === prov)
+      );
 
-// Dynamic monthly trend containing updated targets and live real-time localStorage metrics
-const getLiveMonthlyTrend = () => {
-  const baseTrend = [
-    { month: "04/2026", b2b: 7500000, b2c: 15000000, b2bTarget: 28500000, b2cTarget: 95000000 },
-    { month: "08/2026", b2b: 18000000, b2c: 30000000, b2bTarget: 28500000, b2cTarget: 95000000 },
-    { month: "12/2026 (Target)", b2b: 28500000, b2c: 95000000, b2bTarget: 28500000, b2cTarget: 95000000 },
-    { month: "Current (Live)", b2b: localB2BCollected, b2c: localB2CCollected, b2bTarget: 28500000, b2cTarget: 95000000 }
-  ];
+      const provMembers = activeLocalMembers.filter((m: Member) => 
+        (m.province === prov || m.province === provAr || m.provinceAr === provAr || m.provinceAr === prov)
+      );
 
-  if (!financials || !financials.monthlyTrend || financials.monthlyTrend.length === 0) return baseTrend;
+      const collectedB2B = provPartners.reduce((sum: number, p: Partner) => {
+        const fee = p.feePaidIqd !== undefined && p.feePaidIqd !== null ? Number(p.feePaidIqd) : (p.feePaidUsd ? Number(p.feePaidUsd) * 1500 : 150000);
+        return sum + (isNaN(fee) ? 150000 : fee);
+      }, 0);
 
-  return financials.monthlyTrend.map((item: any) => {
-    if (item.month === "Current (Live)") {
+      const collectedB2C = provMembers.reduce((sum: number, m: Member) => {
+        const fee = m.feePaidIqd !== undefined && m.feePaidIqd !== null ? Number(m.feePaidIqd) : (m.feePaidUsd ? Number(m.feePaidUsd) * 1500 : 25000);
+        return sum + (isNaN(fee) ? 25000 : fee);
+      }, 0);
+
       return {
-        ...item,
-        b2b: localB2BCollected,
-        b2c: localB2CCollected,
-        b2bTarget: 28500000,
-        b2cTarget: 95000000
+        province: prov,
+        provinceAr: provAr,
+        partners: provPartners.length,
+        users: provMembers.length,
+        collectedB2B,
+        collectedB2C,
+        targetPartners: 10,
+        targetUsers: 100
       };
-    }
-    return {
-      ...item,
-      b2bTarget: 28500000,
-      b2cTarget: 95000000
-    };
-  });
-};
+    });
+  }, [activeLocalMembers, activeLocalPartners]);
 
-// Helper to download CSV file with UTF-8 BOM for Arabic text compatibility in Excel/Audit tools
-const downloadCSV = (filename: string, headers: string[], rows: (string | number)[][]) => {
-  const csvContent = [
-    headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(","),
-    ...rows.map(row => row.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
-  ].join("\n");
+  // FILTERING LOGIC (Real-time Instant Search & Matching)
+  const filteredMembers = React.useMemo(() => {
+    const q = (searchQuery || "").trim().toLowerCase();
+    return allMembers.filter(m => {
+      const matchesSearch = !q ||
+        (m.fullName && m.fullName.toLowerCase().includes(q)) ||
+        (m.fullNameAr && m.fullNameAr.toLowerCase().includes(q)) ||
+        (m.cardId && m.cardId.toLowerCase().includes(q)) ||
+        (m.id && m.id.toLowerCase().includes(q)) ||
+        (m.phone && m.phone.toLowerCase().includes(q)) ||
+        (m.nearestLandmark && m.nearestLandmark.toLowerCase().includes(q));
+      
+      const matchesProvince = provinceFilter === "All" || m.province === provinceFilter || m.provinceAr === provinceFilter;
+      const matchesStatus = statusFilter === "All" || m.status === statusFilter || (statusFilter === "Active" && isMemberActive(m)) || (statusFilter === "Inactive" && !isMemberActive(m));
 
-  const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.setAttribute("href", url);
-  link.setAttribute("download", filename);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
+      return matchesSearch && matchesProvince && matchesStatus;
+    });
+  }, [allMembers, searchQuery, provinceFilter, statusFilter]);
 
-const handleExportMembersCSV = () => {
-  const headers = [
-    "ID",
-    "Card ID",
-    "Full Name (EN)",
-    "Full Name (AR)",
-    "Province",
-    "Status",
-    "Fee Paid (IQD)",
-    "Duration",
-    "Registration Date",
-    "Expiry Date"
-  ];
-  const rows = filteredMembers.map(m => [
-    m.id || "",
-    m.cardId || "",
-    m.fullName || "",
-    m.fullNameAr || "",
-    m.province || "",
-    m.status || "",
-    m.feePaidIqd !== undefined && m.feePaidIqd !== null ? m.feePaidIqd : (m.feePaidUsd ? m.feePaidUsd * 1500 : 25000),
-    m.durationMonths === 12 ? "12 Months (1 Year)" : "6 Months",
-    m.registrationDate || "",
-    m.expiryDate || ""
-  ]);
-  downloadCSV(`BYD_Members_Audit_Report_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
-};
+  const filteredPartners = React.useMemo(() => {
+    const q = (searchQuery || "").trim().toLowerCase();
+    return allPartners.filter(p => {
+      const matchesSearch = !q ||
+        (p.companyName && p.companyName.toLowerCase().includes(q)) ||
+        (p.companyNameAr && p.companyNameAr.toLowerCase().includes(q)) ||
+        (p.sector && p.sector.toLowerCase().includes(q)) ||
+        (p.sectorAr && p.sectorAr.toLowerCase().includes(q)) ||
+        (p.username && p.username.toLowerCase().includes(q)) ||
+        (p.phone && p.phone.toLowerCase().includes(q)) ||
+        (p.id && p.id.toLowerCase().includes(q));
+      
+      const matchesProvince = provinceFilter === "All" || p.province === provinceFilter || p.provinceAr === provinceFilter;
+      const matchesStatus = statusFilter === "All" || p.status === statusFilter || (statusFilter === "Active" && isPartnerActive(p)) || (statusFilter === "Inactive" && !isPartnerActive(p));
 
-const handleExportPartnersCSV = () => {
-  const headers = [
-    "ID",
-    "Company Name (EN)",
-    "Company Name (AR)",
-    "Sector",
-    "Province",
-    "Status",
-    "Fee Paid (IQD)",
-    "Discount",
-    "Username / Account",
-    "Phone",
-    "Registration Date"
-  ];
-  const rows = filteredPartners.map(p => [
-    p.id || "",
-    p.companyName || "",
-    p.companyNameAr || "",
-    p.sector || "",
-    p.province || "",
-    p.status || "",
-    p.feePaidIqd !== undefined && p.feePaidIqd !== null ? p.feePaidIqd : (p.feePaidUsd ? p.feePaidUsd * 1500 : 150000),
-    p.discount || p.discountPercentage || "10%",
-    p.username || "",
-    p.phone || "",
-    p.registrationDate || ""
-  ]);
-  downloadCSV(`BYD_Partners_Audit_Report_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
-};
+      return matchesSearch && matchesProvince && matchesStatus;
+    });
+  }, [allPartners, searchQuery, provinceFilter, statusFilter]);
 
-const handleExportFinancialAuditCSV = () => {
-  const headers = [
-    "Province",
-    "Arabic Province Name",
-    "Active B2B Partners",
-    "Active B2C Members",
-    "Collected B2B Revenue (IQD)",
-    "Collected B2C Revenue (IQD)",
-    "Total Collected Revenue (IQD)"
-  ];
-  const rows = liveProvinceBreakdown.map(pb => [
-    pb.province,
-    pb.provinceAr,
-    pb.partners,
-    pb.users,
-    pb.collectedB2B,
-    pb.collectedB2C,
-    pb.collectedB2B + pb.collectedB2C
-  ]);
 
-  const totalB2B = liveProvinceBreakdown.reduce((sum, pb) => sum + pb.collectedB2B, 0);
-  const totalB2C = liveProvinceBreakdown.reduce((sum, pb) => sum + pb.collectedB2C, 0);
+  // Collected B2B Revenue = Sum of actual B2B fees paid by active partners (Default 150,000 IQD)
+  const localB2BCollected = activeLocalPartners.reduce((sum: number, p: any) => {
+    const fee = p.feePaidIqd !== undefined && p.feePaidIqd !== null
+      ? Number(p.feePaidIqd)
+      : (p.feePaidUsd ? Number(p.feePaidUsd) * 1500 : 150000);
+    return sum + (isNaN(fee) ? 150000 : fee);
+  }, 0);
 
-  rows.push([
-    "ALL PROVINCES TOTAL",
-    "الإجمالي الكلي لكافة المحافظات",
-    activeLocalPartners.length,
-    activeLocalMembers.length,
-    totalB2B,
-    totalB2C,
-    totalB2B + totalB2C
-  ]);
-
-  downloadCSV(`BYD_Financial_Audit_Report_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
-};
+  // Collected B2C Revenue = Sum of actual B2C fees paid by active members (Default 25,000 IQD)
+  const localB2CCollected = activeLocalMembers.reduce((sum: number, m: any) => {
+    const fee = m.feePaidIqd !== undefined && m.feePaidIqd !== null
+      ? Number(m.feePaidIqd)
+      : (m.feePaidUsd ? Number(m.feePaidUsd) * 1500 : 25000);
+    return sum + (isNaN(fee) ? 25000 : fee);
+  }, 0);
 
   return (
     <div className="bg-[#050505] min-h-screen text-white pt-6 pb-20">
@@ -2403,55 +2225,57 @@ const handleExportFinancialAuditCSV = () => {
         )}
 
         {/* Top summary cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-xs text-gray-500 font-black uppercase tracking-wider">{t.tblFullName} (B2C)</span>
-              <Users className="w-5 h-5 text-[#D30014]" />
+        {financials && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
+              <div className="flex justify-between items-start mb-4">
+                <span className="text-xs text-gray-500 font-black uppercase tracking-wider">{t.tblFullName} (B2C)</span>
+                <Users className="w-5 h-5 text-[#D30014]" />
+              </div>
+              <p className="text-3xl font-black text-white">{activeLocalMembers.length}</p>
+              <span className="text-xs text-gray-500 font-bold block mt-2">Target: 1,900 Users</span>
             </div>
-            <p className="text-3xl font-black text-white">{activeLocalMembers.length}</p>
-            <span className="text-xs text-gray-500 font-bold block mt-2">Target: 1,900 Users</span>
-          </div>
 
-          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-xs text-gray-500 font-black uppercase tracking-wider">{t.tblCompanyName} (B2B)</span>
-              <Building2 className="w-5 h-5 text-white" />
+            <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
+              <div className="flex justify-between items-start mb-4">
+                <span className="text-xs text-gray-500 font-black uppercase tracking-wider">{t.tblCompanyName} (B2B)</span>
+                <Building2 className="w-5 h-5 text-white" />
+              </div>
+              <p className="text-3xl font-black text-white">{activeLocalPartners.length}</p>
+              <span className="text-xs text-gray-500 font-bold block mt-2">Target: 190 Partners</span>
             </div>
-            <p className="text-3xl font-black text-white">{activeLocalPartners.length}</p>
-            <span className="text-xs text-gray-500 font-bold block mt-2">Target: 190 Partners</span>
-          </div>
 
-          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-xs text-gray-500 font-black uppercase tracking-wider">
-                {lang === "en" ? "Collected B2B Revenue" : "المبالغ المحصلة للشركات"}
+            <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
+              <div className="flex justify-between items-start mb-4">
+                <span className="text-xs text-gray-500 font-black uppercase tracking-wider">
+                  {lang === "en" ? "Collected B2B Revenue" : "المبالغ المحصلة للشركات"}
+                </span>
+                <Building2 className="w-5 h-5 text-[#D30014]" />
+              </div>
+              <p className="text-xl sm:text-2xl lg:text-3xl font-black text-green-400">
+                {localB2BCollected.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
+              </p>
+              <span className="text-xs text-gray-500 font-bold block mt-2">
+                {lang === "en" ? "Target: 28,500,000 IQD" : "المستهدف: 28,500,000 د.ع"}
               </span>
-              <Building2 className="w-5 h-5 text-[#D30014]" />
             </div>
-            <p className="text-xl sm:text-2xl lg:text-3xl font-black text-green-400">
-              {localB2BCollected.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
-            </p>
-            <span className="text-xs text-gray-500 font-bold block mt-2">
-              {lang === "en" ? "Target: 28,500,000 IQD" : "المستهدف: 28,500,000 د.ع"}
-            </span>
-          </div>
 
-          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-xs text-gray-500 font-black uppercase tracking-wider">
-                {lang === "en" ? "Collected B2C Revenue" : "المبالغ المحصلة للأفراد"}
+            <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
+              <div className="flex justify-between items-start mb-4">
+                <span className="text-xs text-gray-500 font-black uppercase tracking-wider">
+                  {lang === "en" ? "Collected B2C Revenue" : "المبالغ المحصلة للأفراد"}
+                </span>
+                <Users className="w-5 h-5 text-white" />
+              </div>
+              <p className="text-xl sm:text-2xl lg:text-3xl font-black text-green-400">
+                {localB2CCollected.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
+              </p>
+              <span className="text-xs text-gray-500 font-bold block mt-2">
+                {lang === "en" ? "Target: 95,000,000 IQD" : "المستهدف: 95,000,000 د.ع"}
               </span>
-              <Users className="w-5 h-5 text-white" />
             </div>
-            <p className="text-xl sm:text-2xl lg:text-3xl font-black text-green-400">
-              {localB2CCollected.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
-            </p>
-            <span className="text-xs text-gray-500 font-bold block mt-2">
-              {lang === "en" ? "Target: 95,000,000 IQD" : "المستهدف: 95,000,000 د.ع"}
-            </span>
           </div>
-        </div>
+        )}
 
         {/* Tab Selection */}
         <div className="flex border-b border-gray-800 mb-8 overflow-x-auto gap-2">
@@ -2537,10 +2361,8 @@ const handleExportFinancialAuditCSV = () => {
         )}
 
         {/* ----------------- SECTION 1: ANALYTICS TAB ----------------- */}
-        {!isLoading && activeTab === "analytics" && (
+        {!isLoading && activeTab === "analytics" && financials && (
           <div className="space-y-10">
-            
-            {/* Financial Performance Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#121212] border border-gray-800/80 rounded-2xl p-5 shadow-lg shadow-black/40">
               <div>
                 <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5">
@@ -2555,7 +2377,6 @@ const handleExportFinancialAuditCSV = () => {
                   onClick={handleExportComprehensiveAnalyticsPDF}
                   className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] hover:bg-[#b00010] border border-[#D30014] text-white font-black rounded-xl text-xs sm:text-sm transition-all active:scale-95 shadow-md shadow-red-900/30 cursor-pointer"
                   id="export-comprehensive-pdf-btn"
-                  title={lang === "en" ? "Export Comprehensive Analytics & Audit PDF with Platform Logo" : "تصدير تقرير الإحصائيات الشامل والتدقيق المالي PDF مع الشعار"}
                 >
                   <FileText className="w-4 h-4" />
                   <span>{lang === "en" ? "Export Comprehensive Statistics PDF" : "تصدير تقرير الإحصائيات الشامل PDF"}</span>
@@ -2563,10 +2384,7 @@ const handleExportFinancialAuditCSV = () => {
               </div>
             </div>
 
-            {/* Target Breakdown & Comparison Bar chart */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              
-              {/* Target Vs Collected Revenue Chart */}
               <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
                 <h3 className="text-lg font-black text-white mb-6 flex items-center gap-2">
                   <DollarSign className="w-5 h-5 text-[#D30014]" />
@@ -2574,17 +2392,11 @@ const handleExportFinancialAuditCSV = () => {
                 </h3>
                 <div className="h-80 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <RechartsBarChart
-                      data={getRevenueComparisonData()}
-                      margin={{ top: 20, right: 30, left: 10, bottom: 5 }}
-                    >
+                    <RechartsBarChart data={getRevenueComparisonData()} margin={{ top: 20, right: 30, left: 10, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#222" />
                       <XAxis dataKey="name" stroke="#999" fontSize={12} />
                       <YAxis stroke="#999" fontSize={12} />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: "#111", border: "1px solid #333", color: "#fff" }}
-                        cursor={{ fill: "rgba(211, 0, 20, 0.05)" }}
-                      />
+                      <Tooltip contentStyle={{ backgroundColor: "#111", border: "1px solid #333", color: "#fff" }} />
                       <Legend />
                       <Bar dataKey="Collected" fill="#D30014" name={lang === "en" ? "Collected (IQD)" : "المحصل (د.ع)"} />
                       <Bar dataKey="Target" fill="#444" name={lang === "en" ? "Target (IQD)" : "المستهدف (د.ع)"} />
@@ -2593,7 +2405,6 @@ const handleExportFinancialAuditCSV = () => {
                 </div>
               </div>
 
-              {/* Growth Trend Area Chart */}
               <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
                 <h3 className="text-lg font-black text-white mb-6 flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-white" />
@@ -2601,138 +2412,25 @@ const handleExportFinancialAuditCSV = () => {
                 </h3>
                 <div className="h-80 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                      data={getLiveMonthlyTrend()}
-                      margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                    >
-                      <defs>
-                        <linearGradient id="colorB2C" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#D30014" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#D30014" stopOpacity={0}/>
-                        </linearGradient>
-                        <linearGradient id="colorB2B" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#8884d8" stopOpacity={0.4}/>
-                          <stop offset="95%" stopColor="#8884d8" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
+                    <AreaChart data={getLiveMonthlyTrend()} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#222" />
                       <XAxis dataKey="month" stroke="#999" fontSize={12} />
                       <YAxis stroke="#999" fontSize={12} />
                       <Tooltip contentStyle={{ backgroundColor: "#111", border: "1px solid #333", color: "#fff" }} />
                       <Legend />
-                      <Area type="monotone" dataKey="b2c" stroke="#D30014" fillOpacity={1} fill="url(#colorB2C)" name="B2C (Members)" />
-                      <Area type="monotone" dataKey="b2b" stroke="#8884d8" fillOpacity={1} fill="url(#colorB2B)" name="B2B (Partners)" />
+                      <Area type="monotone" dataKey="b2c" stroke="#D30014" fillOpacity={1} fill="#D30014" name="B2C (Members)" />
+                      <Area type="monotone" dataKey="b2b" stroke="#8884d8" fillOpacity={1} fill="#8884d8" name="B2B (Partners)" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
               </div>
-
             </div>
-
-            {/* Target Breakdown Information Widget */}
-            <div className="bg-gradient-to-br from-[#121212] to-black border border-gray-800 rounded-xl p-6 sm:p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2.5 rounded-lg bg-[#D30014]/15 text-[#D30014]">
-                  <TrendingUp className="w-6 h-6" />
-                </div>
-                <div>
-                  <h4 className="text-lg font-extrabold text-white">{t.finTargetPt}</h4>
-                  <p className="text-xs text-gray-500 uppercase font-black">Triad Projections across 19 Provinces</p>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm text-gray-300">
-                <div className="bg-black/50 p-4 rounded-lg border border-gray-900">
-                  <span className="text-xs text-[#D30014] font-black uppercase tracking-wider block mb-1">Corporate Target (B2B)</span>
-                  <span className="text-lg font-black text-white">{t.finPartnersTarget}</span>
-                  <p className="text-xs text-gray-500 mt-2">
-                    {lang === "en" ? "Yields 28,500,000 IQD projected core revenue annually." : "تنتج 28,500,000 د.ع من الإيرادات السنوية المتوقعة."}
-                  </p>
-                </div>
-                <div className="bg-black/50 p-4 rounded-lg border border-gray-900">
-                  <span className="text-xs text-[#D30014] font-black uppercase tracking-wider block mb-1">Consumer Target (B2C)</span>
-                  <span className="text-lg font-black text-white">{t.finUsersTarget}</span>
-                  <p className="text-xs text-gray-500 mt-2">
-                    {lang === "en" ? "Yields 47,500,000 IQD projected core revenue annually." : "تنتج 47,500,000 د.ع من الإيرادات السنوية المتوقعة."}
-                  </p>
-                </div>
-                <div className="bg-black/50 p-4 rounded-lg border border-gray-900">
-                  <span className="text-xs text-[#D30014] font-black uppercase tracking-wider block mb-1">Iraq National Coverage</span>
-                  <span className="text-lg font-black text-white">19/19 Provinces Active</span>
-                  <p className="text-xs text-gray-500 mt-2">Full decentralized B2C/B2B exposure network.</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Province Specific Performance Breakdown */}
-            <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 overflow-hidden">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                <h3 className="text-lg font-black text-white flex items-center gap-2">
-                  <MapPin className="w-5 h-5 text-[#D30014]" />
-                  {t.finProvinceStats}
-                </h3>
-
-                <div className="flex items-center gap-3 flex-wrap">
-                  <button
-                    onClick={handleExportFinancialAuditCSV}
-                    className="flex items-center gap-2 px-3.5 py-2 bg-[#1a1a1a] hover:bg-[#252525] border border-gray-800 text-gray-200 rounded-lg text-xs font-bold transition-all active:scale-95 cursor-pointer"
-                    id="export-financial-csv-btn"
-                  >
-                    <Download className="w-4 h-4 text-[#D30014]" />
-                    <span>{lang === "en" ? "Export Financial CSV" : "تصدير التقرير المالي CSV"}</span>
-                  </button>
-
-                  <button
-                    onClick={handleExportComprehensiveAnalyticsPDF}
-                    className="flex items-center gap-2 px-3.5 py-2 bg-[#D30014] hover:bg-red-700 text-white rounded-lg text-xs font-black transition-all shadow-md active:scale-95 cursor-pointer"
-                    id="export-financial-pdf-btn"
-                  >
-                    <FileText className="w-4 h-4" />
-                    <span>{lang === "en" ? "Export Comprehensive Audit PDF" : "تصدير التقرير الشامل PDF"}</span>
-                  </button>
-                </div>
-              </div>
-              
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-widest font-bold">
-                      <th className="py-3 px-4">{t.finProvinceCol}</th>
-                      <th className="py-3 px-4 text-center">{t.finPartnersCol}</th>
-                      <th className="py-3 px-4 text-center">{t.finUsersCol}</th>
-                      <th className="py-3 px-4 text-center">{lang === "en" ? "B2B Rev (IQD)" : "إيراد B2B (د.ع)"}</th>
-                      <th className="py-3 px-4 text-center">{lang === "en" ? "B2C Rev (IQD)" : "إيراد B2C (د.ع)"}</th>
-                      <th className="py-3 px-4 text-right">{t.finRevenueCol}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
-                    {liveProvinceBreakdown.map((pb, idx) => (
-                      <tr key={idx} className="hover:bg-white/[0.02] transition-colors">
-                        <td className="py-3.5 px-4 font-bold text-white flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-[#D30014]"></span>
-                          {lang === "en" ? pb.province : pb.provinceAr}
-                        </td>
-                        <td className="py-3.5 px-4 text-center text-white">{pb.partners} / <span className="text-xs text-gray-600">{pb.targetPartners}</span></td>
-                        <td className="py-3.5 px-4 text-center text-white">{pb.users} / <span className="text-xs text-gray-600">{pb.targetUsers}</span></td>
-                        <td className="py-3.5 px-4 text-center text-gray-400">{pb.collectedB2B.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}</td>
-                        <td className="py-3.5 px-4 text-center text-gray-400">{pb.collectedB2C.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}</td>
-                        <td className="py-3.5 px-4 text-right font-black text-green-400">
-                          {(pb.collectedB2B + pb.collectedB2C).toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
           </div>
         )}
 
         {/* ----------------- FILTER CONTROLS FOR CRUD TABLES ----------------- */}
         {!isLoading && activeTab !== "analytics" && activeTab !== "branding" && activeTab !== "cards" && activeTab !== "viewers" && (
           <div className="bg-[#121212] border border-gray-800 p-6 rounded-xl mb-6 space-y-4">
-            
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 w-full">
               <h3 className="text-lg font-black">
                 {activeTab === "members" ? "B2C Members Registry" : "B2B Partners Registry"}
@@ -2740,39 +2438,23 @@ const handleExportFinancialAuditCSV = () => {
               
               <div className="flex items-center gap-3 w-full sm:w-auto justify-end flex-wrap">
                 <button
-                  onClick={() => {
-                    if (activeTab === "members") {
-                      handleExportMembersCSV();
-                    } else if (activeTab === "partners") {
-                      handleExportPartnersCSV();
-                    } else {
-                      handleExportFinancialAuditCSV();
-                    }
-                  }}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] hover:bg-red-700 border border-red-600 text-white font-bold rounded-lg text-xs sm:text-sm transition-all active:scale-95 cursor-pointer shadow-md shadow-red-900/20"
-                  id="export-csv-btn"
+                  onClick={() => activeTab === "members" ? handleExportMembersCSV() : handleExportPartnersCSV()}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] hover:bg-red-700 text-white font-bold rounded-lg text-xs sm:text-sm cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
-                  <span>{lang === "en" ? "Export CSV" : "تصدير CSV"}</span>
+                  <span>تصدير CSV</span>
                 </button>
 
-                <button
-                  onClick={handleExportToExcel}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-green-700 hover:bg-green-800 border border-green-600 text-white font-bold rounded-lg text-xs sm:text-sm transition-all active:scale-95 cursor-pointer shadow-md shadow-green-900/20"
-                >
+                <button onClick={handleExportToExcel} className="flex items-center gap-2 px-4 py-2.5 bg-green-700 hover:bg-green-800 text-white font-bold rounded-lg text-xs sm:text-sm cursor-pointer">
                   <FileSpreadsheet className="w-4 h-4" />
-                  <span>{lang === "en" ? "Export Excel" : "تصدير إكسل"}</span>
+                  <span>تصدير إكسل</span>
                 </button>
 
-                <button
-                  onClick={handleExportToPDF}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-rose-700 hover:bg-rose-800 border border-rose-600 text-white font-bold rounded-lg text-xs sm:text-sm transition-all active:scale-95 cursor-pointer shadow-md shadow-rose-900/20"
-                >
+                <button onClick={handleExportToPDF} className="flex items-center gap-2 px-4 py-2.5 bg-rose-700 hover:bg-rose-800 text-white font-bold rounded-lg text-xs sm:text-sm cursor-pointer">
                   <CreditCard className="w-4 h-4" />
-                  <span>{lang === "en" ? "Export PDF" : "تصدير PDF"}</span>
+                  <span>تصدير PDF</span>
                 </button>
 
-                {/* Add Button (Hidden for Read-Only Viewers) */}
                 {!isViewer && (
                   <button
                     onClick={() => {
@@ -2786,7 +2468,7 @@ const handleExportFinancialAuditCSV = () => {
                         setShowPartnerForm(true);
                       }
                     }}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] text-white font-bold rounded-lg text-xs sm:text-sm hover:bg-[#b00010] shadow-md shadow-[#D30014]/20 transition-all active:scale-95 cursor-pointer"
+                    className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] text-white font-bold rounded-lg text-xs sm:text-sm hover:bg-[#b00010] cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     <span>{activeTab === "members" ? t.addMemberBtn : t.addPartnerBtn}</span>
@@ -2796,211 +2478,88 @@ const handleExportFinancialAuditCSV = () => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-2">
-              
-              {/* Real-time Text-based Search box */}
               <div className="relative">
                 <Search className="absolute inset-y-0 left-3 my-auto w-4 h-4 text-gray-400" />
                 <input
-                  id="admin-member-search-input"
                   type="text"
-                  placeholder={
-                    activeTab === "members"
-                      ? (lang === "en" ? "Search by Name or Card ID..." : "ابحث بالاسم أو رقم البطاقة...")
-                      : t.searchPlaceholder
-                  }
+                  placeholder="ابحث بالاسم أو رقم البطاقة..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-9 py-2.5 bg-black border border-gray-800 focus:border-[#D30014] focus:ring-1 focus:ring-[#D30014] rounded-lg text-xs font-bold text-white placeholder-gray-500 outline-none transition-all"
+                  className="w-full pl-9 pr-9 py-2.5 bg-black border border-gray-800 rounded-lg text-xs font-bold text-white outline-none"
                 />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="absolute inset-y-0 right-2.5 my-auto w-5 h-5 flex items-center justify-center text-gray-400 hover:text-white bg-gray-800/80 hover:bg-gray-700 rounded-full transition-colors cursor-pointer"
-                    title={lang === "en" ? "Clear Search" : "مسح البحث"}
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
               </div>
 
-              {/* Province filter */}
               <div className="relative">
                 <select
                   value={provinceFilter}
                   onChange={(e) => setProvinceFilter(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-black border border-gray-800 focus:border-[#D30014] rounded-lg text-xs font-bold text-white outline-none appearance-none cursor-pointer"
+                  className="w-full px-3 py-2.5 bg-black border border-gray-800 rounded-lg text-xs font-bold text-white outline-none cursor-pointer"
                 >
-                  <option value="All">🌍 {t.allProvinces}</option>
+                  <option value="All">🌍 جميع المحافظات</option>
                   {provincesList.map((p, idx) => (
-                    <option key={idx} value={p.en}>
-                      {lang === "en" ? p.en : p.ar}
-                    </option>
+                    <option key={idx} value={p.en}>{lang === "en" ? p.en : p.ar}</option>
                   ))}
                 </select>
               </div>
 
-              {/* Status filter */}
               <div className="relative">
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-black border border-gray-800 focus:border-[#D30014] rounded-lg text-xs font-bold text-white outline-none appearance-none cursor-pointer"
+                  className="w-full px-3 py-2.5 bg-black border border-gray-800 rounded-lg text-xs font-bold text-white outline-none cursor-pointer"
                 >
-                  <option value="All">⚡ {t.allStatus}</option>
-                  <option value="Active">{t.active}</option>
-                  <option value="Inactive">{t.inactive}</option>
+                  <option value="All">⚡ جميع الحالات</option>
+                  <option value="Active">فعال</option>
+                  <option value="Inactive">غير فعال</option>
                 </select>
               </div>
 
-              {/* Reset filter button */}
               <button
-                onClick={() => {
-                  setSearchQuery("");
-                  setProvinceFilter("All");
-                  setStatusFilter("All");
-                }}
-                className="w-full py-2.5 bg-black hover:bg-gray-900 border border-gray-800 hover:border-gray-700 text-xs font-bold text-gray-400 hover:text-white rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                onClick={() => { setSearchQuery(""); setProvinceFilter("All"); setStatusFilter("All"); }}
+                className="w-full py-2.5 bg-black hover:bg-gray-900 border border-gray-800 text-xs font-bold text-gray-400 rounded-lg cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>{lang === "en" ? "Clear Filters" : "إعادة تعيين الفلاتر"}</span>
+                <span>إعادة تعيين الفلاتر</span>
               </button>
-
             </div>
-
-            {/* Real-time search/filter results counter banner */}
-            {activeTab === "members" && (
-              <div className="flex items-center justify-between flex-wrap gap-2 pt-1 text-xs font-medium text-gray-400 border-t border-gray-900">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-black bg-red-500/10 text-red-400 border border-red-500/20">
-                    {filteredMembers.length} {lang === "en" ? (filteredMembers.length === 1 ? "Member Found" : "Members Found") : "مشترك"}
-                  </span>
-                  <span>
-                    {lang === "en"
-                      ? `Showing ${filteredMembers.length} of ${allMembers.length} total members`
-                      : `عرض ${filteredMembers.length} من أصل ${allMembers.length} مشترك مسجل`}
-                  </span>
-                </div>
-                {searchQuery && (
-                  <div className="flex items-center gap-1.5 text-xs text-gray-300">
-                    <span className="text-gray-500">{lang === "en" ? "Filtered by:" : "تصفية حسب:"}</span>
-                    <span className="px-2 py-0.5 bg-[#D30014]/20 border border-[#D30014]/40 text-white rounded text-[11px] font-mono font-bold flex items-center gap-1">
-                      "{searchQuery}"
-                      <button onClick={() => setSearchQuery("")} className="hover:text-red-300 ml-1">
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
 
         {/* ----------------- SECTION 2: MEMBERS TAB (B2C) ----------------- */}
         {!isLoading && activeTab === "members" && (
-          <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden shadow-lg shadow-black/40">
+          <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden shadow-lg">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wider font-bold bg-black/40">
-                    <th className="py-4 px-6">{t.tblFullName}</th>
-                    <th className="py-4 px-6">{t.tblCardId}</th>
-                    <th className="py-4 px-6">{t.tblProvince}</th>
-                    <th className="py-4 px-6">{lang === "en" ? "Duration" : "مدة الاشتراك"}</th>
-                    <th className="py-4 px-6">{t.tblRegDate}</th>
-                    <th className="py-4 px-6">{t.tblExpDate}</th>
-                    <th className="py-4 px-6 text-center">{t.tblStatus}</th>
-                    <th className="py-4 px-6 text-right">{t.tblActions}</th>
+                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold bg-black/40">
+                    <th className="py-4 px-6">الاسم الكامل</th>
+                    <th className="py-4 px-6">رقم البطاقة</th>
+                    <th className="py-4 px-6">المحافظة</th>
+                    <th className="py-4 px-6 text-center">الحالة</th>
+                    <th className="py-4 px-6 text-right">العمليات</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
                   {filteredMembers.map((m) => (
-                    <tr key={m.id} className="hover:bg-white/[0.02] transition-colors">
+                    <tr key={m.id} className="hover:bg-white/[0.02]">
                       <td className="py-4 px-6">
                         <div className="font-extrabold text-white">{m.fullName}</div>
-                        <div className="text-xs text-gray-500 font-bold font-mono mt-0.5">{m.fullNameAr}</div>
+                        <div className="text-xs text-gray-500 font-mono">{m.fullNameAr}</div>
                       </td>
-                      <td className="py-4 px-6 font-mono text-[#D30014] font-black tracking-wider">
-                        {m.cardId}
-                      </td>
-                      <td className="py-4 px-6">
-                        {lang === "en" ? m.province : m.provinceAr}
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="text-xs font-extrabold text-white">
-                          {m.durationMonths === 12 || m.feePaidIqd === 50000
-                            ? (lang === "en" ? "1 Year" : "سنة واحدة من تاريخ التسجيل")
-                            : (lang === "en" ? "6 Months" : "6 أشهر من تاريخ التسجيل")}
-                        </div>
-                        <div className="text-[10px] text-green-400 font-mono font-bold mt-0.5">
-                          {(m.feePaidIqd !== undefined ? m.feePaidIqd : (m.durationMonths === 12 ? 50000 : 25000)).toLocaleString()} IQD
-                        </div>
-                      </td>
-                      <td className="py-4 px-6 text-xs text-gray-400 font-mono">
-                        {m.registrationDate}
-                      </td>
-                      <td className="py-4 px-6 text-xs text-gray-400 font-mono">
-                        {m.expiryDate}
-                      </td>
+                      <td className="py-4 px-6 font-mono text-[#D30014] font-black">{m.cardId}</td>
+                      <td className="py-4 px-6">{m.provinceAr || m.province}</td>
                       <td className="py-4 px-6 text-center">
-                        {isViewer ? (
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-black ${
-                            isMemberActive(m)
-                              ? "bg-green-500/10 text-green-400 border border-green-500/20"
-                              : "bg-red-500/10 text-red-500 border border-red-500/20"
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${isMemberActive(m) ? "bg-green-400" : "bg-red-500"}`}></span>
-                            {isMemberActive(m) ? t.active : t.inactive}
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleToggleMemberStatus(m)}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-black cursor-pointer hover:scale-105 transition-all ${
-                            isMemberActive(m)
-                              ? "bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20"
-                              : "bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20"
-                          }`}
-                            title={lang === "en" ? "Click to Activate / Deactivate" : "انقر للتفعيل أو التعطيل"}
-                          >
-                            <span className={`w-1.5 h-1.5 rounded-full ${isMemberActive(m) ? "bg-green-400" : "bg-red-500"}`}></span>
-                            {isMemberActive(m) ? t.active : t.inactive}
-                          </button>
-                        )}
+                        <button onClick={() => !isViewer && handleToggleMemberStatus(m)} className={`px-2.5 py-1 rounded text-xs font-black cursor-pointer ${isMemberActive(m) ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-500"}`}>
+                          {isMemberActive(m) ? "فعال" : "غير فعال"}
+                        </button>
                       </td>
                       <td className="py-4 px-6 text-right">
-                        {isViewer ? (
+                        {!isViewer && (
                           <div className="flex items-center justify-end gap-2">
-                            <span className="text-[11px] font-bold text-gray-500 bg-black/60 px-2.5 py-1 rounded border border-gray-800">
-                              {lang === "en" ? "Audited" : "معاينة فقط"}
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => handleToggleMemberStatus(m)}
-                              className={`p-1.5 border rounded text-xs font-bold transition-all cursor-pointer ${
-                                isMemberActive(m)
-                                  ? "bg-amber-500/10 hover:bg-amber-500 border-amber-500/20 text-amber-400 hover:text-black"
-                                  : "bg-green-500/10 hover:bg-green-500 border-green-500/20 text-green-400 hover:text-black"
-                              }`}
-                              title={isMemberActive(m) ? (lang === "en" ? "Deactivate Account" : "تعطيل الحساب") : (lang === "en" ? "Activate Account" : "تفعيل الحساب")}
-                            >
-                              {isMemberActive(m) ? (lang === "en" ? "Deactivate" : "تعطيل") : (lang === "en" ? "Activate" : "تفعيل")}
+                            <button onClick={() => handleEditMemberClick(m)} className="p-1.5 bg-gray-800 hover:bg-gray-700 text-white rounded cursor-pointer" title="تعديل">
+                              <Edit3 className="w-4 h-4 text-[#D30014]" />
                             </button>
-                            <button
-                              onClick={() => handleEditMemberClick(m)}
-                              className="p-1.5 bg-gray-800/40 hover:bg-gray-800 border border-gray-700/60 rounded text-gray-300 hover:text-white transition-colors cursor-pointer"
-                              title={t.edit}
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteMember(m.id)}
-                              className="p-1.5 bg-red-500/5 hover:bg-[#D30014] border border-red-500/10 text-red-400 hover:text-white transition-colors cursor-pointer"
-                              title={t.delete}
-                            >
+                            <button onClick={() => handleDeleteMember(m.id)} className="p-1.5 bg-red-500/10 hover:bg-[#D30014] text-red-400 rounded cursor-pointer" title="حذف">
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
@@ -3009,38 +2568,7 @@ const handleExportFinancialAuditCSV = () => {
                     </tr>
                   ))}
                   {filteredMembers.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="py-12 text-center text-gray-500">
-                        <div className="flex flex-col items-center justify-center gap-3">
-                          <div className="w-12 h-12 rounded-full bg-gray-900 border border-gray-800 flex items-center justify-center text-gray-500">
-                            <Search className="w-6 h-6 text-gray-400" />
-                          </div>
-                          <div className="text-white font-bold text-sm">
-                            {searchQuery
-                              ? (lang === "en" ? `No members found matching "${searchQuery}"` : `لم يتم العثور على مشتركين مطابقين لـ "${searchQuery}"`)
-                              : (lang === "en" ? "No member records found matching the active filters." : "لا توجد سجلات مشتركين مطابقة للفلاتر المحددة.")}
-                          </div>
-                          <p className="text-xs text-gray-500 max-w-sm">
-                            {lang === "en"
-                              ? "Try typing a different member name, Card ID (e.g. BYD-2026-001), or reset your filters."
-                              : "يرجى تجربة البحث باسم آخر أو رقم بطاقة مختلف أو إعادة تعيين الفلاتر."}
-                          </p>
-                          {(searchQuery || provinceFilter !== "All" || statusFilter !== "All") && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSearchQuery("");
-                                setProvinceFilter("All");
-                                setStatusFilter("All");
-                              }}
-                              className="mt-1 px-4 py-2 bg-[#D30014] hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-all cursor-pointer shadow-md shadow-red-900/20"
-                            >
-                              {lang === "en" ? "Reset All Filters" : "إعادة تعيين كافة الفلاتر"}
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                    <tr><td colSpan={5} className="py-12 text-center text-gray-500 font-bold">لا توجد سجلات أعضاء</td></tr>
                   )}
                 </tbody>
               </table>
@@ -3050,120 +2578,36 @@ const handleExportFinancialAuditCSV = () => {
 
         {/* ----------------- SECTION 3: PARTNERS TAB (B2B) ----------------- */}
         {!isLoading && activeTab === "partners" && (
-          <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden">
+          <div className="bg-[#121212] border border-gray-800 rounded-xl overflow-hidden shadow-lg">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wider font-bold">
-                    <th className="py-4 px-6">{t.tblCompanyName}</th>
-                    <th className="py-4 px-6">{t.tblSector}</th>
-                    <th className="py-4 px-6">{t.tblProvince}</th>
-                    <th className="py-4 px-6">{t.tblVideo}</th>
-                    <th className="py-4 px-6">{t.tblFees}</th>
-                    <th className="py-4 px-6 text-center">{t.tblStatus}</th>
-                    <th className="py-4 px-6 text-right">{t.tblActions}</th>
+                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold bg-black/40">
+                    <th className="py-4 px-6">اسم الشركة</th>
+                    <th className="py-4 px-6">القطاع</th>
+                    <th className="py-4 px-6">المحافظة</th>
+                    <th className="py-4 px-6 text-center">الحالة</th>
+                    <th className="py-4 px-6 text-right">العمليات</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
                   {filteredPartners.map((p) => (
-                    <tr key={p.id} className="hover:bg-white/[0.01] transition-colors">
-                      <td className="py-4 px-6">
-                        <div className="flex items-center gap-3">
-                          <img 
-                            src={p.logoUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=200&auto=format&fit=crop"} 
-                            alt={p.companyName}
-                            className="w-10 h-10 rounded-lg object-cover border border-gray-800 bg-black flex-shrink-0"
-                            referrerPolicy="no-referrer"
-                          />
-                          <div>
-                            <div className="font-extrabold text-white">{p.companyName}</div>
-                            <div className="text-xs text-gray-500 font-bold mt-0.5">{p.companyNameAr}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-4 px-6 text-xs font-black uppercase text-gray-400">
-                        {lang === "en" ? p.sector : p.sectorAr}
-                      </td>
-                      <td className="py-4 px-6">
-                        {lang === "en" ? p.province : p.provinceAr}
-                      </td>
-                      <td className="py-4 px-6">
-                        {p.promoVideoUrl ? (
-                          <button
-                            onClick={() => setActiveVideoUrl(p.promoVideoUrl)}
-                            className="flex items-center gap-1 text-xs text-[#D30014] bg-[#D30014]/10 border border-[#D30014]/25 hover:bg-[#D30014] hover:text-white px-2 py-1 rounded font-bold transition-all"
-                          >
-                            <Video className="w-3.5 h-3.5" />
-                            <span>{t.watchPromo}</span>
-                          </button>
-                        ) : (
-                          <span className="flex items-center gap-1 text-xs text-gray-600">
-                            <VideoOff className="w-3.5 h-3.5" />
-                            <span>No Video</span>
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-4 px-6 text-xs font-mono font-bold text-white">
-                        {(p.feePaidIqd || (p.feePaidUsd ? p.feePaidUsd * 1500 : 150000)).toLocaleString()} IQD
-                      </td>
+                    <tr key={p.id} className="hover:bg-white/[0.02]">
+                      <td className="py-4 px-6 font-bold text-white">{p.companyName}</td>
+                      <td className="py-4 px-6 text-xs text-gray-400">{p.sectorAr || p.sector}</td>
+                      <td className="py-4 px-6">{p.provinceAr || p.province}</td>
                       <td className="py-4 px-6 text-center">
-                        {isViewer ? (
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-black ${
-                            isPartnerActive(p)
-                              ? "bg-green-500/10 text-green-400 border border-green-500/20"
-                              : "bg-red-500/10 text-red-500 border border-red-500/20"
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${isPartnerActive(p) ? "bg-green-400" : "bg-red-500"}`}></span>
-                            {isPartnerActive(p) ? t.active : t.inactive}
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleTogglePartnerStatus(p)}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-black cursor-pointer hover:scale-105 transition-all ${
-                              isPartnerActive(p)
-                                ? "bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20"
-                                : "bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20"
-                            }`}
-                            title={lang === "en" ? "Click to Activate / Deactivate" : "انقر للتفعيل أو التعطيل"}
-                          >
-                            <span className={`w-1.5 h-1.5 rounded-full ${isPartnerActive(p) ? "bg-green-400" : "bg-red-500"}`}></span>
-                            {isPartnerActive(p) ? t.active : t.inactive}
-                          </button>
-                        )}
+                        <button onClick={() => !isViewer && handleTogglePartnerStatus(p)} className={`px-2.5 py-1 rounded text-xs font-black cursor-pointer ${isPartnerActive(p) ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-500"}`}>
+                          {isPartnerActive(p) ? "فعال" : "غير فعال"}
+                        </button>
                       </td>
                       <td className="py-4 px-6 text-right">
-                        {isViewer ? (
+                        {!isViewer && (
                           <div className="flex items-center justify-end gap-2">
-                            <span className="text-[11px] font-bold text-gray-500 bg-black/60 px-2.5 py-1 rounded border border-gray-800">
-                              {lang === "en" ? "Audited" : "معاينة فقط"}
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => handleTogglePartnerStatus(p)}
-                              className={`p-1.5 border rounded text-xs font-bold transition-all cursor-pointer ${
-                                isPartnerActive(p)
-                                  ? "bg-amber-500/10 hover:bg-amber-500 border-amber-500/20 text-amber-400 hover:text-black"
-                                  : "bg-green-500/10 hover:bg-green-500 border-green-500/20 text-green-400 hover:text-black"
-                              }`}
-                              title={isPartnerActive(p) ? (lang === "en" ? "Deactivate Account" : "تعطيل الحساب") : (lang === "en" ? "Activate Account" : "تفعيل الحساب")}
-                            >
-                              {isPartnerActive(p) ? (lang === "en" ? "Deactivate" : "تعطيل") : (lang === "en" ? "Activate" : "تفعيل")}
+                            <button onClick={() => handleEditPartnerClick(p)} className="p-1.5 bg-gray-800 hover:bg-gray-700 text-white rounded cursor-pointer" title="تعديل">
+                              <Edit3 className="w-4 h-4 text-[#D30014]" />
                             </button>
-                            <button
-                              onClick={() => handleEditPartnerClick(p)}
-                              className="p-1.5 bg-gray-800/40 hover:bg-gray-800 border border-gray-700/60 rounded text-gray-300 hover:text-white transition-colors cursor-pointer"
-                              title={t.edit}
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeletePartner(p.id)}
-                              className="p-1.5 bg-red-500/5 hover:bg-[#D30014] border border-red-500/10 text-red-400 hover:text-white transition-colors cursor-pointer"
-                              title={t.delete}
-                            >
+                            <button onClick={() => handleDeletePartner(p.id)} className="p-1.5 bg-red-500/10 hover:bg-[#D30014] text-red-400 rounded cursor-pointer" title="حذف">
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
@@ -3172,11 +2616,7 @@ const handleExportFinancialAuditCSV = () => {
                     </tr>
                   ))}
                   {filteredPartners.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="py-10 text-center text-gray-500">
-                        No partner records found matching filters.
-                      </td>
-                    </tr>
+                    <tr><td colSpan={5} className="py-12 text-center text-gray-500 font-bold">لا توجد شركات مسجلة</td></tr>
                   )}
                 </tbody>
               </table>
@@ -3186,740 +2626,232 @@ const handleExportFinancialAuditCSV = () => {
 
         {/* ----------------- SECTION 4: BRANDING TAB ----------------- */}
         {!isLoading && activeTab === "branding" && (
-          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 sm:p-8" id="branding-settings-panel">
-            <div className="mb-6">
-              <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
-                <span className="w-2.5 h-6 bg-[#D30014] rounded-sm"></span>
-                {lang === "en" ? "Dynamic Ownership & Branding Systems" : "إعدادات الهوية والشركات المالكة"}
-              </h2>
-              <p className="text-xs sm:text-sm text-gray-500 mt-1 font-semibold">
-                {lang === "en" 
-                  ? "Configure the names, descriptions, and logos of the owning corporations. Changes instantly sync and propagate to the public footer."
-                  : "قم بتهيئة أسماء وأوصاف وشعارات الشركات المالكة للمنظومة. تنعكس التغييرات فوراً في أسفل الموقع."}
-              </p>
-            </div>
-
-            <form onSubmit={handleSaveBranding} className="space-y-8 text-xs sm:text-sm">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                
-                {/* Company 1 Configuration */}
-                <div className="bg-black/40 border border-gray-900 rounded-2xl p-5 sm:p-6 space-y-4">
-                  <div className="border-b border-gray-900 pb-3 mb-2 flex justify-between items-center">
-                    <h3 className="text-sm font-black text-[#D30014] uppercase tracking-wider">
-                      {lang === "en" ? "Owning Entity 1 (Marketing)" : "الجهة المالكة الأولى (التسويق)"}
-                    </h3>
-                    <span className="text-[10px] text-gray-600 font-bold">1st Division</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-gray-400 font-bold mb-1.5">{lang === "en" ? "Company Name (English)" : "اسم الشركة (بالإنكليزية)"} *</label>
-                      <input
-                        type="text"
-                        required
-                        id="entity1-name-en"
-                        value={brandingForm.company1Name}
-                        onChange={(e) => setBrandingForm({ ...brandingForm, company1Name: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-gray-400 font-bold mb-1.5">{lang === "en" ? "Company Name (Arabic)" : "اسم الشركة (بالعربية)"} *</label>
-                      <input
-                        type="text"
-                        required
-                        id="entity1-name-ar"
-                        value={brandingForm.company1NameAr}
-                        onChange={(e) => setBrandingForm({ ...brandingForm, company1NameAr: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
-                      />
-                    </div>
-                  </div>
-
-                  <input
-                    type="hidden"
-                    id="entity1-desc-en"
-                    value={brandingForm.company1Desc}
-                  />
-                  <input
-                    type="hidden"
-                    id="entity1-desc-ar"
-                    value={brandingForm.company1DescAr}
-                  />
-
+          <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 sm:p-8">
+            <h2 className="text-xl font-black text-white mb-6">إعدادات الهوية والشركات المالكة</h2>
+            <form onSubmit={handleSaveBranding} className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-black/40 border border-gray-900 rounded-2xl p-5 space-y-4">
+                  <h3 className="text-sm font-black text-[#D30014] uppercase">الجهة المالكة الأولى (التسويق)</h3>
                   <div>
-                    <label className="block text-gray-400 font-bold mb-2">{lang === "en" ? "Corporate Logo Asset" : "شعار الشركة"}</label>
-                    <div className="flex flex-col sm:flex-row items-center gap-4 bg-black/60 p-4 rounded-xl border border-gray-900">
-                      <div className="w-16 h-16 rounded-xl bg-black border border-gray-800 flex-shrink-0 flex items-center justify-center overflow-hidden">
-                        {brandingForm.company1Logo ? (
-                          <img src={brandingForm.company1Logo} alt="Preview 1" className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-[10px] text-gray-600 font-black">No Logo</span>
-                        )}
-                      </div>
-                      <div className="w-full space-y-2">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => handleLogoUpload(e, "company1Logo")}
-                          className="hidden"
-                          id="company1-logo-file"
-                        />
-                        <label
-                          htmlFor="company1-logo-file"
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-gray-800/60 hover:bg-gray-800 border border-gray-700/60 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors"
-                        >
-                          {lang === "en" ? "Upload Custom Image" : "رفع شعار مخصص"}
-                        </label>
-                        <p className="text-[10px] text-gray-500">{lang === "en" ? "Supports PNG, JPG, WebP. Max 2MB." : "يدعم PNG, JPG, WebP. الأقصى 2MB."}</p>
-                      </div>
-                    </div>
+                    <label className="block text-gray-400 font-bold mb-1.5 text-xs">اسم الشركة (إنجليزي)</label>
+                    <input type="text" id="entity1-name-en" value={brandingForm.company1Name} onChange={(e) => setBrandingForm({ ...brandingForm, company1Name: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold text-xs" />
+                  </div>
+                  <div>
+                    <label className="block text-gray-400 font-bold mb-1.5 text-xs">اسم الشركة (عربي)</label>
+                    <input type="text" id="entity1-name-ar" value={brandingForm.company1NameAr} onChange={(e) => setBrandingForm({ ...brandingForm, company1NameAr: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold text-xs" />
                   </div>
                 </div>
 
-                {/* Company 2 Configuration */}
-                <div className="bg-black/40 border border-gray-900 rounded-2xl p-5 sm:p-6 space-y-4">
-                  <div className="border-b border-gray-900 pb-3 mb-2 flex justify-between items-center">
-                    <h3 className="text-sm font-black text-[#D30014] uppercase tracking-wider">
-                      {lang === "en" ? "Owning Entity 2 (Technology)" : "الجهة المالكة الثانية (التكنولوجيا)"}
-                    </h3>
-                    <span className="text-[10px] text-gray-600 font-bold">2nd Division</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-gray-400 font-bold mb-1.5">{lang === "en" ? "Company Name (English)" : "اسم الشركة (بالإنكليزية)"} *</label>
-                      <input
-                        type="text"
-                        required
-                        id="entity2-name-en"
-                        value={brandingForm.company2Name}
-                        onChange={(e) => setBrandingForm({ ...brandingForm, company2Name: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-gray-400 font-bold mb-1.5">{lang === "en" ? "Company Name (Arabic)" : "اسم الشركة (بالعربية)"} *</label>
-                      <input
-                        type="text"
-                        required
-                        id="entity2-name-ar"
-                        value={brandingForm.company2NameAr}
-                        onChange={(e) => setBrandingForm({ ...brandingForm, company2NameAr: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
-                      />
-                    </div>
-                  </div>
-
-                  <input
-                    type="hidden"
-                    id="entity2-desc-en"
-                    value={brandingForm.company2Desc}
-                  />
-                  <input
-                    type="hidden"
-                    id="entity2-desc-ar"
-                    value={brandingForm.company2DescAr}
-                  />
-
+                <div className="bg-black/40 border border-gray-900 rounded-2xl p-5 space-y-4">
+                  <h3 className="text-sm font-black text-[#D30014] uppercase">الجهة المالكة الثانية (التكنولوجيا)</h3>
                   <div>
-                    <label className="block text-gray-400 font-bold mb-2">{lang === "en" ? "Corporate Logo Asset" : "شعار الشركة"}</label>
-                    <div className="flex flex-col sm:flex-row items-center gap-4 bg-black/60 p-4 rounded-xl border border-gray-900">
-                      <div className="w-16 h-16 rounded-xl bg-black border border-gray-800 flex-shrink-0 flex items-center justify-center overflow-hidden">
-                        {brandingForm.company2Logo ? (
-                          <img src={brandingForm.company2Logo} alt="Preview 2" className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-[10px] text-gray-600 font-black">No Logo</span>
-                        )}
-                      </div>
-                      <div className="w-full space-y-2">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => handleLogoUpload(e, "company2Logo")}
-                          className="hidden"
-                          id="company2-logo-file"
-                        />
-                        <label
-                          htmlFor="company2-logo-file"
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-gray-800/60 hover:bg-gray-800 border border-gray-700/60 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors"
-                        >
-                          {lang === "en" ? "Upload Custom Image" : "رفع شعار مخصص"}
-                        </label>
-                        <p className="text-[10px] text-gray-500">{lang === "en" ? "Supports PNG, JPG, WebP. Max 2MB." : "يدعم PNG, JPG, WebP. الأقصى 2MB."}</p>
-                      </div>
-                    </div>
+                    <label className="block text-gray-400 font-bold mb-1.5 text-xs">اسم الشركة (إنجليزي)</label>
+                    <input type="text" id="entity2-name-en" value={brandingForm.company2Name} onChange={(e) => setBrandingForm({ ...brandingForm, company2Name: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold text-xs" />
+                  </div>
+                  <div>
+                    <label className="block text-gray-400 font-bold mb-1.5 text-xs">اسم الشركة (عربي)</label>
+                    <input type="text" id="entity2-name-ar" value={brandingForm.company2NameAr} onChange={(e) => setBrandingForm({ ...brandingForm, company2NameAr: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold text-xs" />
                   </div>
                 </div>
-
               </div>
 
-              {/* Action buttons bar */}
-              <div className="flex justify-end pt-4 border-t border-gray-900">
-                {isViewer ? (
-                  <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-lg text-xs font-bold">
-                    <Eye className="w-4 h-4" />
-                    <span>{lang === "en" ? "Only Master Admin is authorized to modify corporate brand settings." : "المسؤول العام فقط يملك صلاحية حفظ أو تغيير بيانات الشركات المالكة."}</span>
-                  </div>
-                ) : (
-                  <button
-                    type="submit"
-                    className="px-6 py-3 bg-[#D30014] hover:bg-[#b00010] text-white text-xs sm:text-sm font-extrabold rounded-lg shadow-lg shadow-[#D30014]/20 transition-all duration-300 cursor-pointer"
-                  >
-                    {lang === "en" ? "Save Dynamic Brand Configuration" : "حفظ إعدادات الهوية والشركات المالكة"}
+              {!isViewer && (
+                <div className="flex justify-end">
+                  <button type="submit" className="px-6 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white text-xs font-bold rounded-lg cursor-pointer">
+                    حفظ إعدادات الهوية
                   </button>
-                )}
-              </div>
+                </div>
+              )}
             </form>
           </div>
         )}
 
-        {/* CARDS ASSET MANAGEMENT TAB */}
-        {activeTab === "cards" && (
-          <div className="space-y-6" id="cards-management-panel">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#121212] border border-gray-800 p-6 rounded-2xl">
-              <div>
-                <h2 className="text-xl font-black text-white flex items-center gap-2">
-                  <span className="w-2.5 h-5 bg-[#D30014] rounded-sm"></span>
-                  {lang === "en" ? "Card Asset Management Ledger" : "سجل إدارة الأصول الرقمية والبطاقات"}
-                </h2>
-                <p className="text-xs text-gray-400 mt-1">
-                  {lang === "en" ? "Generate, activate, deactivate, and bind physical BYD serial cards to B2C users." : "توليد، تفعيل، إلغاء تفعيل، وربط الأرقام التسلسلية لبطاقات BYD بالمشتركين."}
-                </p>
-              </div>
+        {/* ----------------- SECTION 5: CARDS TAB ----------------- */}
+        {!isLoading && activeTab === "cards" && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center bg-[#121212] border border-gray-800 p-6 rounded-2xl">
+              <h2 className="text-xl font-black text-white">سجل إدارة الأصول الرقمية والبطاقات</h2>
               {!isViewer && (
-                <button
-                  onClick={handleGenerateSequentialCard}
-                  className="flex items-center gap-2 px-5 py-3 bg-[#D30014] hover:bg-[#b00010] text-white font-extrabold rounded-xl text-xs sm:text-sm shadow-md shadow-[#D30014]/20 transition-all duration-300 cursor-pointer"
-                  id="generate-card-btn"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>{lang === "en" ? "Generate Sequential Card" : "توليد بطاقة متسلسلة"}</span>
+                <button onClick={handleGenerateSequentialCard} className="flex items-center gap-2 px-5 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white font-bold rounded-xl text-xs cursor-pointer">
+                  <Plus className="w-4 h-4" /> <span>توليد بطاقة جديدة</span>
                 </button>
               )}
             </div>
 
-            {/* Miniature Stats Row */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-[#121212]/60 border border-gray-900 rounded-xl p-4">
-                <span className="text-[10px] text-gray-500 font-extrabold uppercase tracking-wider block">{lang === "en" ? "Total Assets" : "إجمالي البطاقات"}</span>
-                <span className="text-2xl font-black text-white mt-1 block">{cards.length}</span>
-              </div>
-              <div className="bg-[#121212]/60 border border-gray-900 rounded-xl p-4">
-                <span className="text-[10px] text-gray-500 font-extrabold uppercase tracking-wider block">{lang === "en" ? "Active Assets" : "البطاقات النشطة"}</span>
-                <span className="text-2xl font-black text-green-400 mt-1 block">{cards.filter(c => c.status === "Active").length}</span>
-              </div>
-              <div className="bg-[#121212]/60 border border-gray-900 rounded-xl p-4">
-                <span className="text-[10px] text-gray-500 font-extrabold uppercase tracking-wider block">{lang === "en" ? "Deactivated" : "المعطلة"}</span>
-                <span className="text-2xl font-black text-red-500 mt-1 block">{cards.filter(c => c.status === "Inactive").length}</span>
-              </div>
-              <div className="bg-[#121212]/60 border border-gray-900 rounded-xl p-4">
-                <span className="text-[10px] text-gray-500 font-extrabold uppercase tracking-wider block">{lang === "en" ? "Unassigned" : "غير معينة"}</span>
-                <span className="text-2xl font-black text-orange-400 mt-1 block">{cards.filter(c => !c.memberId).length}</span>
-              </div>
-            </div>
-
-            {/* Card Template Visual Replacement Manager */}
-            <div className="bg-[#121212] border border-gray-800 p-6 rounded-2xl space-y-4">
-              <div>
-                <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
-                  <CreditCard className="w-4 h-4 text-[#D30014]" />
-                  {lang === "en" ? "Upload Custom Card Design / Card Template Manager" : "رفع تصميم الكارد المخصص / مدير قالب البطاقة"}
-                </h3>
-                <p className="text-[11px] text-gray-400 mt-1">
-                  {lang === "en" ? "Change the default plastic card template design across the entire application instantly." : "تغيير تصميم قالب البطاقة الافتراضي في جميع أنحاء التطبيق على الفور."}
-                </p>
-              </div>
-
-              {/* Flexible Asset Manager */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-black/30 p-4 rounded-xl border border-gray-900">
-                <div>
-                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                    {lang === "en" ? "Asset Type Selector" : "محدد نوع الملف"}
-                  </label>
-                  <select
-                    value={selectedAssetType}
-                    onChange={(e) => setSelectedAssetType(e.target.value as "image" | "video")}
-                    className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold text-xs focus:border-[#D30014] focus:ring-1 focus:ring-[#D30014] outline-none"
-                  >
-                    <option value="image">
-                      {lang === "en" ? "Custom Image Template" : "قالب صورة مخصص"}
-                    </option>
-                    <option value="video">
-                      {lang === "en" ? "Promotional Card Video" : "فيديو ترويجي للكارد"}
-                    </option>
-                  </select>
-                </div>
-                <div className="flex items-end">
-                  <button
-                    type="button"
-                    onClick={handleResetMedia}
-                    className="w-full px-3 py-2 bg-gray-950 hover:bg-[#D30014]/20 hover:text-white border border-gray-800 hover:border-[#D30014] rounded-lg text-gray-400 font-bold text-xs transition-colors"
-                  >
-                    {lang === "en" ? "Reset to Default Layout" : "إعادة تعيين للتصميم الافتراضي"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex flex-col md:flex-row items-center gap-6">
-                {/* File Uploader area */}
-                <div className="w-full md:w-1/2">
-                  <div className="relative border-2 border-dashed border-gray-800 hover:border-[#D30014]/50 rounded-xl p-6 text-center transition-all bg-black/40">
-                    <input
-                      type="file"
-                      accept={selectedAssetType === "video" ? "video/*" : "image/*"}
-                      onChange={handleMultimediaUpload}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
-                    <div className="space-y-2">
-                      <div className="flex justify-center">
-                        <Upload className="w-8 h-8 text-gray-500 animate-pulse" />
-                      </div>
-                      <p className="text-xs font-bold text-gray-300">
-                        {lang === "en" 
-                          ? `Drag & drop or click to choose a ${selectedAssetType}` 
-                          : `اسحب وأسقط أو انقر لاختيار ${selectedAssetType === "video" ? "فيديو" : "صورة"}`
-                        }
-                      </p>
-                      <p className="text-[10px] text-gray-500">
-                        {selectedAssetType === "video" ? "MP4, WebM up to 4MB" : "PNG, JPG or JPEG up to 4MB"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card Preview area */}
-                <div className="w-full md:w-1/2 flex justify-center">
-                  <div className="relative w-72 h-44 rounded-2xl overflow-hidden border border-gray-800 bg-gradient-to-br from-black to-gray-900 shadow-2xl flex flex-col justify-between p-5 text-white">
-                    
-                    {/* Media Backgrounds */}
-                    {cardMedia?.type === "image" && cardMedia.data ? (
-                      <img src={cardMedia.data} alt="Card Template" className="absolute inset-0 w-full h-full object-cover z-0 opacity-80" />
-                    ) : cardMedia?.type === "video" && cardMedia.data ? (
-                      <video src={cardMedia.data} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover z-0 opacity-80 rounded-2xl" />
-                    ) : activeTemplate?.cardDesignBase64 ? (
-                      activeTemplate.type === "video" ? (
-                        <video src={activeTemplate.cardDesignBase64} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover z-0 opacity-80 rounded-2xl" />
-                      ) : (
-                        <img src={activeTemplate.cardDesignBase64} alt="Card Template" className="absolute inset-0 w-full h-full object-cover z-0 opacity-80" />
-                      )
-                    ) : (
-                      <>
-                        <div className="absolute inset-0 bg-gradient-to-br from-[#D30014] to-[#a00010] z-0" />
-                        <div className="absolute bottom-0 left-0 right-0 h-12 bg-black opacity-90 flex items-end">
-                          <svg className="w-full h-full text-white fill-current" viewBox="0 0 300 60" preserveAspectRatio="none">
-                            <path d="M0,60 L300,60 L300,45 L290,45 L285,35 L280,45 L260,45 L255,10 L250,10 L248,20 L240,20 L235,45 L215,45 L210,30 L205,45 L180,45 L175,25 L160,25 L155,45 L140,45 C140,30 120,30 120,45 L105,45 L100,5 L95,5 L90,20 L80,20 L75,45 L50,45 L45,15 L40,15 L35,45 L20,45 L15,35 L10,45 Z" />
-                          </svg>
-                        </div>
-                      </>
-                    )}
-
-                    {/* Logo & Chip */}
-                    <div className="flex justify-between items-start z-10">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-6 h-6 bg-red-600 rounded-lg flex items-center justify-center font-black text-xs text-white">B</div>
-                        <span className="font-extrabold text-sm tracking-widest text-white">BYD CARD</span>
-                      </div>
-                      <div className="w-8 h-6 bg-yellow-500/20 border border-yellow-500/40 rounded-md flex items-center justify-center">
-                        <div className="w-5 h-3 bg-yellow-500/40 rounded-sm" />
-                      </div>
-                    </div>
-
-                    {/* Member details Mock */}
-                    <div className="space-y-1 z-10">
-                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">BYD VIP MEMBERSHIP</p>
-                      <p className="font-black text-sm tracking-wide">MOHAMMED JALAL</p>
-                    </div>
-
-                    <div className="flex justify-between items-end z-10">
-                      <span className="font-mono text-xs tracking-widest">BYD-2026-888</span>
-                      <span className="text-[9px] text-gray-400 font-black">EXP: 12/26</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Cards Ledger Grid / Table */}
             <div className="bg-[#121212] border border-gray-800 rounded-2xl overflow-hidden">
-              <div className="p-5 border-b border-gray-900 flex justify-between items-center">
-                <span className="text-xs text-gray-500 font-black uppercase tracking-wider">
-                  {lang === "en" ? "Active Serial Keys" : "المفاتيح التسلسلية النشطة"}
-                </span>
-                <span className="text-xs text-[#D30014] font-bold">Secure Hardware Registry</span>
-              </div>
-
-              {cards.length === 0 ? (
-                <div className="py-16 text-center text-gray-500 font-bold">
-                  {lang === "en" ? "No cards found in system. Click above to generate." : "لا توجد بطاقات مسجلة في النظام. اضغط أعلاه للتوليد."}
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wider font-bold">
-                        <th className="py-4 px-6">{lang === "en" ? "Preview" : "معاينة"}</th>
-                        <th className="py-4 px-6">{lang === "en" ? "Card Serial" : "الرقم المسلسل"}</th>
-                        <th className="py-4 px-6">{lang === "en" ? "Status" : "الحالة"}</th>
-                        <th className="py-4 px-6">{lang === "en" ? "Bound Member & Dates" : "المشترك المرتبط والتواريخ"}</th>
-                        <th className="py-4 px-6 text-right">{lang === "en" ? "Actions" : "العمليات"}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
-                      {cards.map((card: any) => {
-                        const boundMember = members.find(m => m.id === card.memberId);
-                        return (
-                          <tr key={card.id} className="hover:bg-white/[0.01] transition-colors">
-                            {/* Card Miniature Preview */}
-                            <td className="py-4 px-6">
-                              <div className="relative w-28 aspect-[1.58/1] rounded-lg bg-gradient-to-br from-[#D30014] to-[#80000a] text-white p-2 border border-white/10 shadow-md select-none overflow-hidden flex flex-col justify-between">
-                                <div className="absolute bottom-0 left-0 right-0 h-4 bg-black/80 flex items-end opacity-40">
-                                  <div className="w-full h-2 bg-white" style={{ clipPath: "polygon(0% 100%, 100% 100%, 100% 0%, 80% 50%, 60% 0%, 40% 50%, 20% 0%)" }}></div>
-                                </div>
-                                <div className="flex justify-between items-start">
-                                  <span className="text-[7px] font-black tracking-tighter">BYD CARD</span>
-                                  <span className="text-[6px] font-mono opacity-80 scale-75 origin-top-right truncate max-w-[50px]">{card.cardId}</span>
-                                </div>
-                                <div className="flex justify-between items-end pb-1 relative z-10">
-                                  <div className="flex gap-[1px] h-3 items-end">
-                                    <div className="w-[1px] h-full bg-white"></div>
-                                    <div className="w-[2px] h-full bg-white"></div>
-                                    <div className="w-[1px] h-3 bg-white"></div>
-                                    <div className="w-[2px] h-2 bg-white"></div>
-                                    <div className="w-[1px] h-full bg-white"></div>
-                                  </div>
-                                  <span className="text-[5px] bg-white text-black font-mono px-0.5 rounded">QR</span>
-                                </div>
-                              </div>
-                            </td>
-
-                            <td className="py-4 px-6 font-mono font-bold text-white text-base">
-                              {card.cardId}
-                            </td>
-
-                            <td className="py-4 px-6">
-                              {card.status === "Active" ? (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black bg-green-500/10 text-green-400 border border-green-500/20">
-                                  <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-                                  {lang === "en" ? "Active" : "نشطة"}
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black bg-red-500/10 text-red-500 border border-red-500/20">
-                                  <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                                  {lang === "en" ? "Inactive" : "معطلة"}
-                                </span>
-                              )}
-                            </td>
-
-                            <td className="py-4 px-6">
-                              {boundMember ? (
-                                <div className="flex flex-col gap-1">
-                                  <span className="text-white font-extrabold">
-                                    {lang === "en" ? boundMember.fullName : boundMember.fullNameAr}
-                                  </span>
-                                  <span className="text-xs text-gray-500 font-mono">
-                                    ID: {boundMember.id} | {lang === "en" ? boundMember.province : boundMember.provinceAr}
-                                  </span>
-                                  <div className="flex flex-wrap gap-x-2 text-[10px] font-mono text-gray-400 mt-0.5">
-                                    <span className="text-green-500 bg-green-500/5 px-1.5 py-0.5 rounded border border-green-500/10">
-                                      {lang === "en" ? "Issued" : "إصدار"}: {boundMember.registrationDate}
-                                    </span>
-                                    <span className="text-red-400 bg-red-400/5 px-1.5 py-0.5 rounded border border-red-400/10">
-                                      {lang === "en" ? "Expires" : "انتهاء"}: {boundMember.expiryDate}
-                                    </span>
-                                  </div>
-                                </div>
-                              ) : (
-                                <span className="text-orange-400 text-xs font-bold bg-orange-400/5 border border-orange-400/20 px-2 py-1 rounded">
-                                  {lang === "en" ? "Unassigned Asset" : "مخزون غير مرتبط بمشترك"}
-                                </span>
-                              )}
-                            </td>
-
-                            <td className="py-4 px-6 text-right">
-                              {isViewer ? (
-                                <div className="flex justify-end gap-2">
-                                  <span className="text-[11px] font-bold text-gray-500 bg-black/60 px-2.5 py-1 rounded border border-gray-800">
-                                    {lang === "en" ? "Audited" : "معاينة فقط"}
-                                  </span>
-                                </div>
-                              ) : (
-                                <div className="flex justify-end gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleEditCard(card)}
-                                    className="p-2 bg-gray-800 hover:bg-gray-700 border border-gray-700/60 rounded-lg text-white transition-colors cursor-pointer"
-                                    title="Edit/Bind Card"
-                                  >
-                                    <Edit3 className="w-4 h-4 text-[#D30014]" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteCard(card.id)}
-                                    className="p-2 bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/20 rounded-lg text-red-500 transition-colors cursor-pointer"
-                                    title="Delete Card"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold">
+                    <th className="py-4 px-6">الرقم المسلسل</th>
+                    <th className="py-4 px-6">الحالة</th>
+                    <th className="py-4 px-6 text-right">العمليات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
+                  {cards.map((card: any) => (
+                    <tr key={card.id}>
+                      <td className="py-4 px-6 font-mono font-bold text-white">{card.cardId}</td>
+                      <td className="py-4 px-6">
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${card.status === "Active" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-500"}`}>
+                          {card.status === "Active" ? "نشطة" : "معطلة"}
+                        </span>
+                      </td>
+                      <td className="py-4 px-6 text-right">
+                        {!isViewer && (
+                          <div className="flex justify-end gap-2">
+                            <button onClick={() => handleEditCard(card)} className="p-2 bg-gray-800 text-white rounded cursor-pointer" title="تعديل">
+                              <Edit3 className="w-4 h-4 text-[#D30014]" />
+                            </button>
+                            <button onClick={() => handleDeleteCard(card.id)} className="p-2 bg-red-500/10 text-red-500 rounded cursor-pointer" title="حذف">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {cards.length === 0 && (
+                    <tr><td colSpan={3} className="py-12 text-center text-gray-500 font-bold">لا توجد بطاقات مسجلة</td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
 
-        {/* ----------------- SECTION 6: VIEWER / AUDITOR ACCOUNTS (MASTER ADMIN ONLY) ----------------- */}
+        {/* ----------------- SECTION 6: VIEWERS TAB ----------------- */}
         {!isLoading && activeTab === "viewers" && !isViewer && (
-          <div className="space-y-8" id="viewers-management-panel">
-            
-            {/* Header info banner */}
-            <div className="bg-[#121212] border border-gray-800 p-6 sm:p-8 rounded-2xl">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-800/80 pb-6 mb-6">
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5">
-                    <span className="w-2.5 h-6 bg-[#D30014] rounded-sm"></span>
-                    {lang === "en" ? "Auditor & Read-Only Accounts Management" : "إدارة حسابات المراقبة والتدقيق (صلاحية الاطلاع والطباعة فقط)"}
-                  </h2>
-                  <p className="text-xs sm:text-sm text-gray-400 mt-1 font-semibold">
-                    {lang === "en"
-                      ? "Create secure credentials for auditors, observers, or printing staff. These accounts can ONLY view data, inspect statistics, and print/export reports, but CANNOT add, modify, or delete anything."
-                      : "أنشئ حسابات مخصصة للمراقبين أو المدققين أو موظفي الطباعة. تتيح هذه الحسابات الاطلاع الكامل وطباعة التقارير والإحصائيات فقط، دون أي صلاحية للإضافة أو التعديل أو الحذف."}
-                  </p>
+          <div className="space-y-8">
+            <div className="bg-[#121212] border border-gray-800 p-6 rounded-2xl">
+              <h2 className="text-xl font-black text-white mb-4">إدارة حسابات المراقبة والتدقيق</h2>
+              {viewerMsg && (
+                <div className={`p-3 rounded-lg mb-4 text-xs font-bold ${viewerMsg.type === "success" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"}`}>
+                  {viewerMsg.text}
                 </div>
-                <div className="flex items-center gap-2 px-3.5 py-2 bg-[#D30014]/10 border border-[#D30014]/30 rounded-xl text-xs font-black text-[#D30014] shrink-0">
-                  <Shield className="w-4 h-4" />
-                  <span>{lang === "en" ? "Master Admin Only" : "إدارة المسؤول العام فقط"}</span>
-                </div>
-              </div>
-
-              {/* Account Creation Form */}
-              <form onSubmit={handleCreateViewerAccount} className="space-y-4">
-                <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
-                  <UserCheck className="w-4 h-4 text-[#D30014]" />
-                  <span>{lang === "en" ? "Create New Auditor Account" : "إنشاء حساب مراقب / مدقق جديد"}</span>
-                </h3>
-
-                {viewerMsg && (
-                  <div className={`p-4 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-3 border ${
-                    viewerMsg.type === "success" 
-                      ? "bg-green-500/10 border-green-500/30 text-green-400" 
-                      : "bg-red-500/10 border-red-500/30 text-red-400"
-                  }`}>
-                    {viewerMsg.type === "success" ? <CheckCircle className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
-                    <span>{viewerMsg.text}</span>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div>
-                    <label className="block text-gray-400 font-bold mb-1.5 text-xs">
-                      {lang === "en" ? "Username" : "اسم المستخدم (User)"} *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. auditor1"
-                      value={viewerForm.username}
-                      onChange={(e) => setViewerForm({ ...viewerForm, username: e.target.value })}
-                      className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014] text-xs sm:text-sm font-mono"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-gray-400 font-bold mb-1.5 text-xs">
-                      {lang === "en" ? "Password" : "كلمة المرور (Password)"} *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Pass@12345"
-                      value={viewerForm.password}
-                      onChange={(e) => setViewerForm({ ...viewerForm, password: e.target.value })}
-                      className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014] text-xs sm:text-sm font-mono"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-gray-400 font-bold mb-1.5 text-xs">
-                      {lang === "en" ? "Auditor / Observer Name" : "اسم المراقب أو الجهة"}
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Financial Audit Dept"
-                      value={viewerForm.name}
-                      onChange={(e) => setViewerForm({ ...viewerForm, name: e.target.value })}
-                      className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014] text-xs sm:text-sm"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-gray-400 font-bold mb-1.5 text-xs">
-                      {lang === "en" ? "Notes / Department" : "ملاحظات أو القسم"}
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Baghdad Regional Office"
-                      value={viewerForm.notes}
-                      onChange={(e) => setViewerForm({ ...viewerForm, notes: e.target.value })}
-                      className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014] text-xs sm:text-sm"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end pt-2">
-                  <button
-                    type="submit"
-                    disabled={viewerLoading}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white text-xs sm:text-sm font-extrabold rounded-lg shadow-lg shadow-[#D30014]/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>{viewerLoading ? (lang === "en" ? "Creating..." : "جاري الإنشاء...") : (lang === "en" ? "Create Account" : "إنشاء الحساب")}</span>
-                  </button>
-                </div>
+              )}
+              <form onSubmit={handleCreateViewerAccount} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <input type="text" required placeholder="اسم المستخدم" value={viewerForm.username} onChange={(e) => setViewerForm({ ...viewerForm, username: e.target.value })} className="px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold text-xs" />
+                <input type="text" required placeholder="كلمة المرور" value={viewerForm.password} onChange={(e) => setViewerForm({ ...viewerForm, password: e.target.value })} className="px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold text-xs" />
+                <input type="text" placeholder="اسم المراقب" value={viewerForm.name} onChange={(e) => setViewerForm({ ...viewerForm, name: e.target.value })} className="px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold text-xs" />
+                <button type="submit" disabled={viewerLoading} className="px-6 py-2 bg-[#D30014] text-white text-xs font-bold rounded-lg cursor-pointer">
+                  {viewerLoading ? "جاري الإنشاء..." : "إنشاء الحساب"}
+                </button>
               </form>
             </div>
 
-            {/* List of active auditor accounts */}
-            <div className="bg-[#121212] border border-gray-800 rounded-2xl overflow-hidden shadow-xl">
-              <div className="p-5 border-b border-gray-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-[#0d0d0d]">
-                <div className="flex items-center gap-2">
-                  <Eye className="w-5 h-5 text-[#D30014]" />
-                  <h3 className="text-base font-black text-white">
-                    {lang === "en" ? "Active Auditor & Monitoring Accounts" : "حسابات المراقبة والتدقيق الفعالة"}
-                  </h3>
-                </div>
-                <span className="text-xs font-mono text-gray-400 bg-black/60 px-3 py-1 rounded-full border border-gray-800">
-                  {viewerAccounts.length} {lang === "en" ? "Active Accounts" : "حسابات مسجلة"}
-                </span>
-              </div>
-
-              {viewerAccounts.length === 0 ? (
-                <div className="py-16 text-center text-gray-500">
-                  <Eye className="w-10 h-10 text-gray-700 mx-auto mb-3" />
-                  <p className="font-bold text-sm">{lang === "en" ? "No auditor accounts created yet." : "لم يتم إنشاء أي حسابات مراقبة حتى الآن."}</p>
-                  <p className="text-xs text-gray-600 mt-1">{lang === "en" ? "Use the form above to add view-only accounts." : "استخدم النموذج أعلاه لإضافة حسابات بصلاحيات المشاهدة والطباعة فقط."}</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wider font-bold">
-                        <th className="py-4 px-6">{lang === "en" ? "Username" : "اسم المستخدم"}</th>
-                        <th className="py-4 px-6">{lang === "en" ? "Password" : "كلمة المرور"}</th>
-                        <th className="py-4 px-6">{lang === "en" ? "Name / Officer" : "الاسم / المراقب"}</th>
-                        <th className="py-4 px-6">{lang === "en" ? "Notes" : "الملاحظات"}</th>
-                        <th className="py-4 px-6">{lang === "en" ? "Role & Permissions" : "الصلاحية"}</th>
-                        <th className="py-4 px-6">{lang === "en" ? "Created Date" : "تاريخ الإنشاء"}</th>
-                        <th className="py-4 px-6 text-right">{lang === "en" ? "Actions" : "الإجراءات"}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-900 text-xs sm:text-sm font-semibold text-gray-300">
-                      {viewerAccounts.map((account) => (
-                        <tr key={account.id} className="hover:bg-white/[0.01] transition-colors">
-                          <td className="py-4 px-6 font-mono font-black text-white">
-                            <div className="flex items-center gap-2">
-                              <span>{account.username}</span>
-                              <button
-                                onClick={() => copyToClipboard(account.username, `u-${account.id}`)}
-                                className="p-1 text-gray-500 hover:text-white transition-colors cursor-pointer"
-                                title="Copy username"
-                              >
-                                {copiedId === `u-${account.id}` ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-                              </button>
-                            </div>
-                          </td>
-
-                          <td className="py-4 px-6 font-mono text-gray-300">
-                            <div className="flex items-center gap-2">
-                              <span className="bg-black/60 px-2 py-0.5 rounded border border-gray-800 text-amber-300">
-                                {account.password}
-                              </span>
-                              <button
-                                onClick={() => copyToClipboard(account.password, `p-${account.id}`)}
-                                className="p-1 text-gray-500 hover:text-white transition-colors cursor-pointer"
-                                title="Copy password"
-                              >
-                                {copiedId === `p-${account.id}` ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-                              </button>
-                            </div>
-                          </td>
-
-                          <td className="py-4 px-6 font-bold text-white">
-                            {account.name || "—"}
-                          </td>
-
-                          <td className="py-4 px-6 text-gray-400 text-xs">
-                            {account.notes || "—"}
-                          </td>
-
-                          <td className="py-4 px-6">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>{lang === "en" ? "Read & Print Only" : "اطلاع وطباعة فقط"}</span>
-                            </span>
-                          </td>
-
-                          <td className="py-4 px-6 font-mono text-xs text-gray-500">
-                            {account.createdAt}
-                          </td>
-
-                          <td className="py-4 px-6 text-right">
-                            <button
-                              onClick={() => handleDeleteViewerAccount(account.id, account.username)}
-                              className="p-2 bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/20 rounded-lg text-red-500 transition-colors cursor-pointer"
-                              title={lang === "en" ? "Delete Account" : "حذف الحساب"}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+            <div className="bg-[#121212] border border-gray-800 rounded-2xl overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-bold">
+                    <th className="py-4 px-6">اسم المستخدم</th>
+                    <th className="py-4 px-6">كلمة المرور</th>
+                    <th className="py-4 px-6">اسم المراقب</th>
+                    <th className="py-4 px-6 text-right">الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-900 text-xs font-semibold text-gray-300">
+                  {viewerAccounts.map((acc) => (
+                    <tr key={acc.id}>
+                      <td className="py-4 px-6 font-mono font-bold text-white">{acc.username}</td>
+                      <td className="py-4 px-6 font-mono text-amber-300">{acc.password}</td>
+                      <td className="py-4 px-6">{acc.name || "—"}</td>
+                      <td className="py-4 px-6 text-right">
+                        <button onClick={() => handleDeleteViewerAccount(acc.id, acc.username)} className="p-2 bg-red-500/10 text-red-500 rounded cursor-pointer">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {viewerAccounts.length === 0 && (
+                    <tr><td colSpan={4} className="py-12 text-center text-gray-500 font-bold">لا توجد حسابات مراقبة</td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-
           </div>
         )}
 
       </div>
 
-      {/* ----------------- MODAL MODAL: MEMBER CRUD FORM ----------------- */}
+      {/* Modals */}
       {showMemberForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
-          <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 sm:p-8 relative max-h-[90vh] overflow-y-auto shadow-2xl">
-            <h3 className="text-xl font-black mb-6 flex items-center gap-2">
-              <span className="w-2.5 h-5 bg-[#D30014] rounded-sm"></span>
-              {editingMember ? "Edit B2C Member Details" : "Create New B2C Member Card"}
-            </h3>
+          <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 relative max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-black mb-4">{editingMember ? "تعديل مشترك" : "إضافة مشترك جديد"}</h3>
+            <form onSubmit={handleSaveMember} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-gray-400 mb-1">الاسم (إنجليزي)</label>
+                <input type="text" required value={memberForm.fullName} onChange={(e) => setMemberForm({ ...memberForm, fullName: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold" />
+              </div>
+              <div>
+                <label className="block text-gray-400 mb-1">الاسم (عربي)</label>
+                <input type="text" required value={memberForm.fullNameAr} onChange={(e) => setMemberForm({ ...memberForm, fullNameAr: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold" />
+              </div>
+              <div>
+                <label className="block text-gray-400 mb-1">رقم البطاقة الفريد</label>
+                <input type="text" required value={memberForm.cardId} onChange={(e) => setMemberForm({ ...memberForm, cardId: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-mono font-bold" />
+              </div>
+              <div>
+                <label className="block text-gray-400 mb-1">المحافظة</label>
+                <select value={memberForm.province} onChange={(e) => setMemberForm({ ...memberForm, province: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold">
+                  {provincesList.map((p, idx) => <option key={idx} value={p.en}>{p.ar}</option>)}
+                </select>
+              </div>
+              <div className="flex justify-end gap-3 pt-4">
+                <button type="button" onClick={() => setShowMemberForm(false)} className="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg cursor-pointer">إلغاء</button>
+                <button type="submit" className="px-4 py-2 bg-[#D30014] text-white font-bold rounded-lg cursor-pointer">حفظ</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
-            <form onSubmit={handleSaveMember} className="space-y-4 text-xs sm:text-sm">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-gray-400 font-bold mb-1.5">{t.mFullNameEn} *</label>
-                  <input
-                    type="text"
-                    required
-                    value={memberForm.fullName}
-                    onChange={(e) => setMemberForm({ ...memberForm, fullName: e.target.value })}
-                    placeholder="Ahmed Ali Al-Rubaie"
-                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-400 font-bold mb-1.5">{t.mFullNameAr} *</label>
-                  <input
-                    type="text"
-                    required
-                    value={memberForm.fullNameAr}
-                    onChange={(e) => setMemberForm({ ...memberForm, fullNameAr: e.target.value })}
-                    placeholder="أحمد علي الربيعي"
-                    className="I encountered an error doing what you asked. Could you try again?
+      {showPartnerForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+          <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 relative max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-black mb-4">{editingPartner ? "تعديل شريك" : "إضافة شريك جديد"}</h3>
+            <form onSubmit={handleSavePartner} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-gray-400 mb-1">اسم الشركة (إنجليزي)</label>
+                <input type="text" required value={partnerForm.companyName} onChange={(e) => setPartnerForm({ ...partnerForm, companyName: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold" />
+              </div>
+              <div>
+                <label className="block text-gray-400 mb-1">اسم الشركة (عربي)</label>
+                <input type="text" required value={partnerForm.companyNameAr} onChange={(e) => setPartnerForm({ ...partnerForm, companyNameAr: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold" />
+              </div>
+              <div>
+                <label className="block text-gray-400 mb-1">القطاع</label>
+                <select value={partnerForm.sector} onChange={(e) => setPartnerForm({ ...partnerForm, sector: e.target.value })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-bold">
+                  {sectorsList.map((s, idx) => <option key={idx} value={s.en}>{s.ar}</option>)}
+                </select>
+              </div>
+              <div className="flex justify-end gap-3 pt-4">
+                <button type="button" onClick={() => setShowPartnerForm(false)} className="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg cursor-pointer">إلغاء</button>
+                <button type="submit" className="px-4 py-2 bg-[#D30014] text-white font-bold rounded-lg cursor-pointer">حفظ</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showCardForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+          <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 relative">
+            <h3 className="text-lg font-black mb-4">تسجيل رقم بطاقة</h3>
+            <form onSubmit={handleSaveCard} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-gray-400 mb-1">رقم مسلسل البطاقة</label>
+                <input type="text" required value={cardForm.cardId} onChange={(e) => setCardForm({ ...cardForm, cardId: e.target.value.toUpperCase() })} className="w-full px-3 py-2 bg-black border border-gray-800 rounded-lg text-white font-mono font-bold" />
+              </div>
+              <div className="flex justify-end gap-3 pt-4">
+                <button type="button" onClick={() => setShowCardForm(false)} className="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg cursor-pointer">إلغاء</button>
+                <button type="submit" className="px-4 py-2 bg-[#D30014] text-white font-bold rounded-lg cursor-pointer">حفظ</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
