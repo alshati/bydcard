@@ -2683,7 +2683,7 @@ export default function AdminDashboard({
                 </div>
               </div>
 
-              {/* Growth Trend Area Chart */}
+             {/* Growth Trend Area Chart */}
     <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
       <h3 className="text-lg font-black text-white mb-6 flex items-center gap-2">
         <TrendingUp className="w-5 h-5 text-white" />
