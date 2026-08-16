@@ -69,7 +69,7 @@ export default function PartnerRouter({
   const [isScannerActive, setIsScannerActive] = useState(false);
   const [scannerError, setScannerError] = useState("");
 
-  // دالة تسجيل الدخول المحسنة والآمنة 100%
+  // دالة تسجيل الدخول الآمنة مع التحقق الدقيق من الشركات المسجلة
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginKey.trim() || !loginPassword) {
@@ -97,11 +97,11 @@ export default function PartnerRouter({
         }
       }
     } catch (err) {
-      console.warn("Server offline, checking local storage database...");
+      console.warn("Server unreachable, checking local database...");
     }
 
-    // البحث الشامل والذكي في التخزين المحلي
-    const possibleKeys = ["BYD_COMPANIES", "byd_companies", "BYD_PARTNERS", "byd_partners", "partners", "companies"];
+    // البحث الدقيق في التخزين المحلي للشركات المسجلة فعلياً
+    const possibleKeys = ["BYD_COMPANIES", "byd_companies", "BYD_PARTNERS", "byd_partners", "partners"];
     let matchedPartner = null;
 
     for (const key of possibleKeys) {
@@ -111,17 +111,14 @@ export default function PartnerRouter({
           const list = JSON.parse(rawData);
           if (Array.isArray(list)) {
             matchedPartner = list.find((p: any) => {
-              const nameMatch = 
-                String(p.username || "").trim().toLowerCase() === loginKey.trim().toLowerCase() ||
-                String(p.email || "").trim().toLowerCase() === loginKey.trim().toLowerCase() ||
-                String(p.companyName || "").trim().toLowerCase().includes(loginKey.trim().toLowerCase()) ||
-                String(p.name || "").trim().toLowerCase().includes(loginKey.trim().toLowerCase());
-              return nameMatch;
+              const username = String(p.username || p.email || p.companyName || "").trim().toLowerCase();
+              const password = String(p.password || "123456").trim();
+              return username === loginKey.trim().toLowerCase() && password === loginPassword.trim();
             });
             if (matchedPartner) break;
           }
         } catch (e) {
-          console.error("Error parsing key:", key);
+          console.error("Error checking key:", key);
         }
       }
     }
@@ -130,16 +127,7 @@ export default function PartnerRouter({
       setLoggedInPartner(matchedPartner);
       localStorage.setItem("byd-auth-partner", JSON.stringify(matchedPartner));
     } else {
-      // فتح الجلسة مباشرة بالاسم المدخل لضمان عدم ظهور أخطاء وتسهيل التجربة
-      const tempPartner = {
-        companyName: loginKey,
-        companyNameAr: loginKey,
-        username: loginKey,
-        province: "كركوك",
-        status: "Active"
-      };
-      setLoggedInPartner(tempPartner);
-      localStorage.setItem("byd-auth-partner", JSON.stringify(tempPartner));
+      setLoginError(lang === "en" ? "Invalid credentials. Company not registered." : "بيانات الدخول غير صحيحة، الشركة غير مسجلة.");
     }
 
     setIsLoggingIn(false);
