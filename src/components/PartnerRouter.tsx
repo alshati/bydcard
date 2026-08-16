@@ -132,7 +132,7 @@ export default function PartnerRouter({
     setResult(null);
   };
 
-  // دالة الفحص المطابقة للواجهة الرئيسية (تتحقق محلياً وتتجاوز خطأ الاتصال)
+  // دالة الفحص الشاملة المطابقة للواجهة الرئيسية والمدمجة مع التخزين المحلي
   const handleVerify = async (cardIdToVerify: string) => {
     if (!cardIdToVerify.trim()) return;
 
@@ -157,21 +157,35 @@ export default function PartnerRouter({
       console.warn("Server verify offline, checking local storage...");
     }
 
-    // فحص من التخزين المحلي مباشرة تماماً مثل الواجهة الرئيسية
-    const localMembers = JSON.parse(localStorage.getItem("BYD_MEMBERS") || "[]");
-    const foundMember = localMembers.find((m: any) => 
-      m.cardId === cardIdToVerify.trim() || m.id === cardIdToVerify.trim()
-    );
+    const possibleKeys = ["BYD_MEMBERS", "byd_members", "BYD_USERS", "byd_users", "BYD_CARDS", "byd_cards", "members"];
+    let foundMember = null;
+
+    for (const key of possibleKeys) {
+      const rawData = localStorage.getItem(key);
+      if (rawData) {
+        try {
+          const list = JSON.parse(rawData);
+          if (Array.isArray(list)) {
+            foundMember = list.find((m: any) => 
+              String(m.cardId || m.id || m.serialNumber || "").trim().toUpperCase() === cardIdToVerify.trim().toUpperCase()
+            );
+            if (foundMember) break;
+          }
+        } catch (e) {
+          console.error("Error parsing localStorage key:", key);
+        }
+      }
+    }
 
     if (foundMember) {
       setResult({
         success: true,
         status: "Active",
-        holderName: foundMember.fullName || foundMember.name,
-        holderNameAr: foundMember.fullNameAr || foundMember.nameAr || foundMember.fullName || "حامل البطاقة",
+        holderName: foundMember.fullName || foundMember.name || foundMember.holderName || "Card Holder",
+        holderNameAr: foundMember.fullNameAr || foundMember.nameAr || foundMember.holderNameAr || foundMember.fullName || foundMember.name || "حامل البطاقة",
         province: foundMember.province || "Kirkuk",
         provinceAr: foundMember.provinceAr || foundMember.province || "كركوك",
-        expiryDate: foundMember.expiryDate || "2027-02-12",
+        expiryDate: foundMember.expiryDate || foundMember.expireDate || "2027-02-12",
         message: "Card is active",
         messageAr: "البطاقة فعالة وصالحة للاستخدام"
       });
