@@ -132,7 +132,7 @@ export default function PartnerRouter({
     setResult(null);
   };
 
-  // دالة الفحص الشاملة المطابقة للواجهة الرئيسية والمدمجة مع التخزين المحلي
+  // دالة التحقق المعدلة لتتحقق من حالة التفعيل والتعطيل بدقة
   const handleVerify = async (cardIdToVerify: string) => {
     if (!cardIdToVerify.trim()) return;
 
@@ -178,17 +178,34 @@ export default function PartnerRouter({
     }
 
     if (foundMember) {
-      setResult({
-        success: true,
-        status: "Active",
-        holderName: foundMember.fullName || foundMember.name || foundMember.holderName || "Card Holder",
-        holderNameAr: foundMember.fullNameAr || foundMember.nameAr || foundMember.holderNameAr || foundMember.fullName || foundMember.name || "حامل البطاقة",
-        province: foundMember.province || "Kirkuk",
-        provinceAr: foundMember.provinceAr || foundMember.province || "كركوك",
-        expiryDate: foundMember.expiryDate || foundMember.expireDate || "2027-02-12",
-        message: "Card is active",
-        messageAr: "البطاقة فعالة وصالحة للاستخدام"
-      });
+      // التحقق من حالة البطاقة (إذا كانت معطلة أو حالتها غير نشطة)
+      const isInactive = 
+        foundMember.status === "Inactive" || 
+        foundMember.status === "suspended" || 
+        foundMember.status === "disabled" || 
+        foundMember.isActive === false || 
+        foundMember.active === false;
+
+      if (isInactive) {
+        setResult({
+          success: false,
+          status: "Inactive",
+          message: "Card is inactive or suspended.",
+          messageAr: "هذه البطاقة معطلة أو موقوفة حالياً من قبل الإدارة."
+        });
+      } else {
+        setResult({
+          success: true,
+          status: "Active",
+          holderName: foundMember.fullName || foundMember.name || foundMember.holderName || "Card Holder",
+          holderNameAr: foundMember.fullNameAr || foundMember.nameAr || foundMember.holderNameAr || foundMember.fullName || foundMember.name || "حامل البطاقة",
+          province: foundMember.province || "Kirkuk",
+          provinceAr: foundMember.provinceAr || foundMember.province || "كركوك",
+          expiryDate: foundMember.expiryDate || foundMember.expireDate || "2027-02-12",
+          message: "Card is active",
+          messageAr: "البطاقة فعالة وصالحة للاستخدام"
+        });
+      }
     } else {
       setResult({
         success: false,
