@@ -12,7 +12,10 @@ import {
   LineChart, 
   Line, 
   AreaChart, 
-  Area 
+  Area,
+  PieChart,
+  Pie,
+  Cell
 } from "recharts";
 import { 
   Users, 
@@ -50,6 +53,8 @@ import {
   AlertTriangle,
   UserCheck,
   AlertCircle,
+  PieChart as PieChartIcon,
+  Printer,
   X
 } from "lucide-react";
 import { translations, provincesList, sectorsList } from "./translations";
@@ -475,6 +480,8 @@ export default function AdminDashboard({
   const [searchQuery, setSearchQuery] = useState("");
   const [provinceFilter, setProvinceFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [analyticsProvinceSearch, setAnalyticsProvinceSearch] = useState("");
+  const [analyticsSortBy, setAnalyticsSortBy] = useState<"revenue" | "members" | "partners" | "name">("revenue");
 
   // Video Preview Modal
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
@@ -773,7 +780,7 @@ export default function AdminDashboard({
     };
   }, []);
 
- // MEMBER CRUD ACTIONS
+  // MEMBER CRUD ACTIONS
   const handleToggleMemberStatus = async (member: Member) => {
     const currentActive = isMemberActive(member);
     const newStatus = currentActive ? "Inactive" : "Active";
@@ -1117,7 +1124,7 @@ export default function AdminDashboard({
       </div>
     `;
 
-     printWindow.document.write(`
+    printWindow.document.write(`
       <!DOCTYPE html>
       <html dir="ltr">
         <head>
@@ -1670,7 +1677,7 @@ export default function AdminDashboard({
   };
 
 
-// PARTNER CRUD ACTIONS
+  // PARTNER CRUD ACTIONS
   const handleSavePartner = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!partnerForm.companyName || !partnerForm.companyNameAr) {
@@ -1749,7 +1756,7 @@ export default function AdminDashboard({
           }
           safeSetLocalStorage("byd-custom-partners", JSON.stringify(current));
 
-         // Update BYD_COMPANIES
+          // Update BYD_COMPANIES
           const companiesArray = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
           const idxC = companiesArray.findIndex(isMatchPartner);
           if (idxC > -1) {
@@ -1921,7 +1928,8 @@ export default function AdminDashboard({
     });
   };
 
- // CARD CRUD ACTIONS
+
+  // CARD CRUD ACTIONS
   const handleSaveCard = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cardForm.cardId) {
@@ -2074,7 +2082,8 @@ export default function AdminDashboard({
     const s = String(m.status).toLowerCase();
     return s === "active" || s === "نشط";
   };
-   // Combine server array and local storage array into unified lists with deletion filtering
+
+  // Combine server array and local storage array into unified lists with deletion filtering
   const allPartners = React.useMemo(() => {
     const deletedList = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]").map((s: string) => String(s).toLowerCase());
     const isDeleted = (p: any) => {
@@ -2124,7 +2133,8 @@ export default function AdminDashboard({
     });
     return list;
   }, [members, localMembersList]);
-   // Real-time dynamic financial calculations from reactive unified state
+
+  // Real-time dynamic financial calculations from reactive unified state
   const activeLocalMembers = allMembers.filter(isMemberActive);
   const activeLocalPartners = allPartners.filter(isPartnerActive);
 
@@ -2250,6 +2260,38 @@ export default function AdminDashboard({
     ];
   };
 
+  // Distribution by sector for PieChart
+  const getSectorDistributionData = () => {
+    const counts: { [sector: string]: number } = {};
+    activeLocalPartners.forEach(p => {
+      const s = lang === "en" ? (p.sector || p.sectorAr || "Other") : (p.sectorAr || p.sector || "أخرى");
+      counts[s] = (counts[s] || 0) + 1;
+    });
+    const colors = ["#D30014", "#8884d8", "#00C49F", "#FFBB28", "#FF8042", "#0088FE", "#EC4899", "#8B5CF6"];
+    const entries = Object.entries(counts);
+    if (entries.length === 0) {
+      return [{ name: lang === "en" ? "General Services" : "خدمات عامة", value: 1, color: "#D30014" }];
+    }
+    return entries.map(([name, value], idx) => ({
+      name,
+      value,
+      color: colors[idx % colors.length]
+    }));
+  };
+
+  // Top 6 provinces by total revenue for high-impact visual chart
+  const getTopProvincesRevenueData = () => {
+    const sorted = [...liveProvinceBreakdown]
+      .sort((a, b) => (b.collectedB2B + b.collectedB2C) - (a.collectedB2B + a.collectedB2C))
+      .slice(0, 7);
+    return sorted.map(p => ({
+      name: lang === "en" ? p.province : p.provinceAr,
+      B2B: p.collectedB2B,
+      B2C: p.collectedB2C,
+      Total: p.collectedB2B + p.collectedB2C
+    }));
+  };
+
   // Dynamic monthly trend containing updated targets and live real-time localStorage metrics
   const getLiveMonthlyTrend = () => {
     if (!financials || !financials.monthlyTrend) return [];
@@ -2278,6 +2320,11 @@ export default function AdminDashboard({
         b2cTarget: 95000000
       };
     });
+  };
+
+  // Direct print-to-PDF function
+  const handlePrintCurrentDashboard = () => {
+    window.print();
   };
 
   // Helper to download CSV file with UTF-8 BOM for Arabic text compatibility in Excel/Audit tools
@@ -2626,103 +2673,376 @@ export default function AdminDashboard({
           </div>
         )}
 
-       {/* ----------------- SECTION 1: ANALYTICS TAB ----------------- */}
-{!isLoading && activeTab === "analytics" && financials && (
-  <div className="space-y-10">
-    
-    {/* Financial Performance Header */}
-    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#121212] border border-gray-800/80 rounded-2xl p-5 shadow-lg shadow-black/40">
-      <div>
-        <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5">
-          <span className="w-2.5 h-6 bg-[#D30014] rounded-sm"></span>
-          {t.finTitle}
-        </h2>
-        <p className="text-xs sm:text-sm text-gray-400 mt-1">{t.finSubtitle}</p>
-      </div>
+        {/* ----------------- SECTION 1: ANALYTICS TAB ----------------- */}
+        {!isLoading && activeTab === "analytics" && financials && (
+          <div className="space-y-10">
+            
+            {/* Financial Performance Header */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#121212] border border-gray-800/80 rounded-2xl p-5 shadow-lg shadow-black/40">
+              <div>
+                <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5">
+                  <span className="w-2.5 h-6 bg-[#D30014] rounded-sm"></span>
+                  {t.finTitle}
+                </h2>
+                <p className="text-xs sm:text-sm text-gray-400 mt-1">{t.finSubtitle}</p>
+              </div>
 
-      <div className="flex items-center gap-3 flex-wrap w-full sm:w-auto justify-start sm:justify-end">
-        <button
-          onClick={handleExportComprehensiveAnalyticsPDF}
-          className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] hover:bg-[#b00010] border border-[#D30014] text-white font-black rounded-xl text-xs sm:text-sm transition-all active:scale-95 shadow-md shadow-red-900/30 cursor-pointer"
-          id="export-comprehensive-pdf-btn"
-        >
-          <FileText className="w-4 h-4" />
-          <span>{lang === "en" ? "Export Comprehensive Statistics PDF" : "تصدير تقرير الإحصائيات الشامل PDF"}</span>
-        </button>
-      </div>
-    </div>
+              <div className="flex items-center gap-3 flex-wrap w-full sm:w-auto justify-start sm:justify-end">
+                <button
+                  onClick={handleExportFinancialAuditCSV}
+                  className="flex items-center gap-2 px-3.5 py-2.5 bg-[#1a1a1a] hover:bg-[#252525] border border-gray-800 text-gray-200 rounded-xl text-xs sm:text-sm font-bold transition-all active:scale-95 cursor-pointer shadow-sm"
+                  id="export-financial-csv-top-btn"
+                  title={lang === "en" ? "Export Excel / CSV audit file" : "تصدير ملف الجرد المالي إكسل / CSV"}
+                >
+                  <Download className="w-4 h-4 text-[#D30014]" />
+                  <span>{lang === "en" ? "Export CSV" : "تصدير CSV"}</span>
+                </button>
 
-    {/* Target Breakdown & Comparison Bar chart */}
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
-        <h3 className="text-lg font-black text-white mb-6 flex items-center gap-2">
-          <DollarSign className="w-5 h-5 text-[#D30014]" />
-          {lang === "en" ? "Revenue Breakdown vs Target" : "مقارنة المبالغ المحصلة مقابل المستهدفة"}
-        </h3>
-        <div className="h-80 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <RechartsBarChart data={getRevenueComparisonData()} margin={{ top: 20, right: 30, left: 10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-              <XAxis dataKey="name" stroke="#999" fontSize={12} />
-              <YAxis stroke="#999" fontSize={12} />
-              <Tooltip contentStyle={{ backgroundColor: "#111", border: "1px solid #333", color: "#fff" }} cursor={{ fill: "rgba(211, 0, 20, 0.05)" }} />
-              <Legend />
-              <Bar dataKey="Collected" fill="#D30014" name={lang === "en" ? "Collected (IQD)" : "المحصل (د.ع)"} />
-              <Bar dataKey="Target" fill="#444" name={lang === "en" ? "Target (IQD)" : "المستهدف (د.ع)"} />
-            </RechartsBarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+                <button
+                  onClick={handlePrintCurrentDashboard}
+                  className="flex items-center gap-2 px-3.5 py-2.5 bg-[#1a1a1a] hover:bg-[#252525] border border-gray-800 text-gray-200 rounded-xl text-xs sm:text-sm font-bold transition-all active:scale-95 cursor-pointer shadow-sm"
+                  id="print-dashboard-btn"
+                  title={lang === "en" ? "Print or Save as PDF directly" : "طباعة الشاشة الحالية أو حفظها مباشرة PDF"}
+                >
+                  <Printer className="w-4 h-4 text-white" />
+                  <span>{lang === "en" ? "Print View" : "طباعة العرض"}</span>
+                </button>
 
-      {/* Growth Trend Area Chart */}
-      <div className="bg-[#121212] border border-gray-800 rounded-xl p-6">
-        <h3 className="text-lg font-black text-white mb-6 flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-white" />
-          {t.finGrowthTrend}
-        </h3>
-        <div className="h-80 w-full">
-          {getLiveMonthlyTrend() && getLiveMonthlyTrend().length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={getLiveMonthlyTrend()} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorB2C" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#D30014" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="#D30014" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorB2B" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#8884d8" stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor="#8884d8" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                <XAxis dataKey="month" stroke="#999" fontSize={12} />
-                <YAxis stroke="#999" fontSize={12} />
-                <Tooltip contentStyle={{ backgroundColor: "#111", border: "1px solid #333", color: "#fff" }} />
-                <Legend />
-                <Area type="monotone" dataKey="b2c" stroke="#D30014" fillOpacity={1} fill="url(#colorB2C)" name="B2C (Members)" />
-                <Area type="monotone" dataKey="b2b" stroke="#8884d8" fillOpacity={1} fill="url(#colorB2B)" name="B2B (Partners)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex items-center justify-center h-full text-gray-600 font-bold text-sm">
-              {lang === "en" ? "Loading Data..." : "جاري تحميل البيانات..."}
+                <button
+                  onClick={handleExportComprehensiveAnalyticsPDF}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-[#D30014] hover:bg-[#b00010] border border-[#D30014] text-white font-black rounded-xl text-xs sm:text-sm transition-all active:scale-95 shadow-md shadow-red-900/30 cursor-pointer"
+                  id="export-comprehensive-pdf-btn"
+                  title={lang === "en" ? "Export Comprehensive Analytics & Audit PDF with Platform Logo" : "تصدير تقرير الإحصائيات الشامل والتدقيق المالي PDF مع الشعار"}
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>{lang === "en" ? "Export Official Audit PDF" : "تصدير تقرير الـ PDF الرسمي"}</span>
+                </button>
+              </div>
             </div>
-          )}
-        </div>
-      </div>
-    </div>
 
-    {/* Target Breakdown Information Widget */}
-    <div className="bg-gradient-to-br from-[#121212] to-black border border-gray-800 rounded-xl p-6 sm:p-8">
-      {/* ... (بقية محتوى هذا الجزء كما هو) ... */}
-    </div>
+            {/* Top Row: Primary Charts (Target Comparison + Live Monthly Growth) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              
+              {/* Target Vs Collected Revenue Chart */}
+              <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-lg font-black text-white flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-[#D30014]" />
+                    {lang === "en" ? "Revenue Breakdown vs Target" : "مقارنة المبالغ المحصلة مقابل المستهدفة"}
+                  </h3>
+                  <span className="text-xs px-2.5 py-1 bg-red-950/40 text-red-400 border border-red-900/40 rounded-full font-bold">
+                    {lang === "en" ? "Live Real-Time" : "مباشر ومحدّث"}
+                  </span>
+                </div>
+                <div className="h-80 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsBarChart
+                      data={getRevenueComparisonData()}
+                      margin={{ top: 20, right: 30, left: 10, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+                      <XAxis dataKey="name" stroke="#999" fontSize={12} />
+                      <YAxis stroke="#999" fontSize={12} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: "#111", border: "1px solid #333", color: "#fff", borderRadius: "8px" }}
+                        cursor={{ fill: "rgba(211, 0, 20, 0.05)" }}
+                        formatter={(value: any) => [`${Number(value).toLocaleString()} IQD`, ""]}
+                      />
+                      <Legend />
+                      <Bar dataKey="Collected" fill="#D30014" radius={[6, 6, 0, 0]} name={lang === "en" ? "Collected (IQD)" : "المحصل (د.ع)"} />
+                      <Bar dataKey="Target" fill="#333" radius={[6, 6, 0, 0]} name={lang === "en" ? "Target (IQD)" : "المستهدف (د.ع)"} />
+                    </RechartsBarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
 
-    {/* Province Specific Performance Breakdown */}
-    <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 overflow-hidden">
-      {/* ... (بقية محتوى الجدول كما هو) ... */}
-    </div>
-  </div>
-)}
+              {/* Growth Trend Area Chart */}
+              <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-lg font-black text-white flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-white" />
+                    {t.finGrowthTrend}
+                  </h3>
+                  <span className="text-xs px-2.5 py-1 bg-blue-950/40 text-blue-400 border border-blue-900/40 rounded-full font-bold">
+                    {lang === "en" ? "Monthly Progression" : "المسار الشهري"}
+                  </span>
+                </div>
+                <div className="h-80 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={getLiveMonthlyTrend()}
+                      margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="colorB2C" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#D30014" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#D30014" stopOpacity={0}/>
+                        </linearGradient>
+                        <linearGradient id="colorB2B" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#8884d8" stopOpacity={0.4}/>
+                          <stop offset="95%" stopColor="#8884d8" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+                      <XAxis dataKey="month" stroke="#999" fontSize={12} />
+                      <YAxis stroke="#999" fontSize={12} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: "#111", border: "1px solid #333", color: "#fff", borderRadius: "8px" }} 
+                        formatter={(value: any) => [`${Number(value).toLocaleString()} IQD`, ""]}
+                      />
+                      <Legend />
+                      <Area type="monotone" dataKey="b2c" stroke="#D30014" strokeWidth={2} fillOpacity={1} fill="url(#colorB2C)" name={lang === "en" ? "B2C (Members)" : "الأعضاء (B2C)"} />
+                      <Area type="monotone" dataKey="b2b" stroke="#8884d8" strokeWidth={2} fillOpacity={1} fill="url(#colorB2B)" name={lang === "en" ? "B2B (Partners)" : "الشركاء (B2B)"} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Second Row: Top Provinces Breakdown + Sector Distribution Pie */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              
+              {/* Top Provinces Revenue Bar Chart */}
+              <div className="lg:col-span-2 bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-lg font-black text-white flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-[#D30014]" />
+                    {lang === "en" ? "Top Performing Governorates (Revenue IQD)" : "أعلى المحافظات أداءً وتحصيلاً مالياً"}
+                  </h3>
+                  <span className="text-xs text-gray-500 font-bold">
+                    {lang === "en" ? "Top 7 Provinces" : "أبرز 7 محافظات"}
+                  </span>
+                </div>
+                <div className="h-72 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsBarChart
+                      data={getTopProvincesRevenueData()}
+                      margin={{ top: 10, right: 20, left: 10, bottom: 25 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+                      <XAxis dataKey="name" stroke="#999" fontSize={11} angle={-20} textAnchor="end" />
+                      <YAxis stroke="#999" fontSize={11} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: "#111", border: "1px solid #333", color: "#fff", borderRadius: "8px" }}
+                        formatter={(value: any) => [`${Number(value).toLocaleString()} IQD`, ""]}
+                      />
+                      <Legend verticalAlign="top" height={36} />
+                      <Bar dataKey="B2B" stackId="a" fill="#8884d8" name={lang === "en" ? "B2B Revenue" : "إيراد الشركات"} />
+                      <Bar dataKey="B2C" stackId="a" fill="#D30014" radius={[4, 4, 0, 0]} name={lang === "en" ? "B2C Revenue" : "إيراد الأعضاء"} />
+                    </RechartsBarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* B2B Partner Sectors Pie Chart */}
+              <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 shadow-md shadow-black/20 flex flex-col justify-between">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-black text-white flex items-center gap-2">
+                    <PieChartIcon className="w-5 h-5 text-[#D30014]" />
+                    {lang === "en" ? "Sectors Breakdown" : "توزيع قطاعات الشركات"}
+                  </h3>
+                  <span className="text-xs text-gray-500 font-bold">{activeLocalPartners.length} {lang === "en" ? "Partners" : "شريك"}</span>
+                </div>
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={getSectorDistributionData()}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={80}
+                        paddingAngle={4}
+                        dataKey="value"
+                      >
+                        {getSectorDistributionData().map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} stroke="#121212" strokeWidth={2} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: "#111", border: "1px solid #333", color: "#fff", borderRadius: "8px" }}
+                        formatter={(value: any, name: any) => [`${value} ${lang === "en" ? "Partners" : "شريك"}`, name]}
+                      />
+                      <Legend 
+                        layout="horizontal" 
+                        verticalAlign="bottom" 
+                        align="center"
+                        wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Target Breakdown Information Widget */}
+            <div className="bg-gradient-to-br from-[#121212] to-black border border-gray-800 rounded-xl p-6 sm:p-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2.5 rounded-lg bg-[#D30014]/15 text-[#D30014]">
+                  <TrendingUp className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-lg font-extrabold text-white">{t.finTargetPt}</h4>
+                  <p className="text-xs text-gray-500 uppercase font-black">Triad Projections across 19 Provinces</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm text-gray-300">
+                <div className="bg-black/50 p-4 rounded-lg border border-gray-900">
+                  <span className="text-xs text-[#D30014] font-black uppercase tracking-wider block mb-1">Corporate Target (B2B)</span>
+                  <span className="text-lg font-black text-white">{t.finPartnersTarget}</span>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {lang === "en" ? "Yields 28,500,000 IQD projected core revenue annually." : "تنتج 28,500,000 د.ع من الإيرادات السنوية المتوقعة."}
+                  </p>
+                </div>
+                <div className="bg-black/50 p-4 rounded-lg border border-gray-900">
+                  <span className="text-xs text-[#D30014] font-black uppercase tracking-wider block mb-1">Consumer Target (B2C)</span>
+                  <span className="text-lg font-black text-white">{t.finUsersTarget}</span>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {lang === "en" ? "Yields 47,500,000 IQD projected core revenue annually." : "تنتج 47,500,000 د.ع من الإيرادات السنوية المتوقعة."}
+                  </p>
+                </div>
+                <div className="bg-black/50 p-4 rounded-lg border border-gray-900">
+                  <span className="text-xs text-[#D30014] font-black uppercase tracking-wider block mb-1">Iraq National Coverage</span>
+                  <span className="text-lg font-black text-white">19/19 Provinces Active</span>
+                  <p className="text-xs text-gray-500 mt-2">Full decentralized B2C/B2B exposure network.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Province Specific Performance Breakdown Table with Live Search & Sort */}
+            <div className="bg-[#121212] border border-gray-800 rounded-xl p-6 overflow-hidden">
+              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
+                <div>
+                  <h3 className="text-lg font-black text-white flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-[#D30014]" />
+                    {t.finProvinceStats}
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {lang === "en" ? "Comprehensive provincial revenue and subscriber inputs across 19 governorates." : "جدول تفصيلي لمدخلات وإيرادات كل محافظة من المحافظات الـ 19."}
+                  </p>
+                </div>
+
+                {/* Filter and Search Controls for Province Breakdown */}
+                <div className="flex items-center gap-3 flex-wrap w-full lg:w-auto justify-start lg:justify-end">
+                  <div className="relative min-w-[180px] flex-1 sm:flex-initial">
+                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input 
+                      type="text"
+                      placeholder={lang === "en" ? "Filter governorate..." : "ابحث عن محافظة..."}
+                      value={analyticsProvinceSearch}
+                      onChange={(e) => setAnalyticsProvinceSearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-1.5 bg-[#1a1a1a] border border-gray-800 rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#D30014]"
+                    />
+                    {analyticsProvinceSearch && (
+                      <button 
+                        onClick={() => setAnalyticsProvinceSearch("")}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white text-xs"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+
+                  <select
+                    value={analyticsSortBy}
+                    onChange={(e: any) => setAnalyticsSortBy(e.target.value)}
+                    className="px-3 py-1.5 bg-[#1a1a1a] border border-gray-800 rounded-lg text-xs text-gray-200 focus:outline-none focus:border-[#D30014] cursor-pointer"
+                  >
+                    <option value="revenue">{lang === "en" ? "Sort: Highest Revenue" : "الترتيب: الأعلى إيراداً"}</option>
+                    <option value="members">{lang === "en" ? "Sort: Most Subscribers" : "الترتيب: الأكثر أعضاء"}</option>
+                    <option value="partners">{lang === "en" ? "Sort: Most Partners" : "الترتيب: الأكثر شركات"}</option>
+                    <option value="name">{lang === "en" ? "Sort: Governorate Name" : "الترتيب: اسم المحافظة"}</option>
+                  </select>
+
+                  <button
+                    onClick={handleExportFinancialAuditCSV}
+                    className="flex items-center gap-2 px-3.5 py-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-gray-800 text-gray-200 rounded-lg text-xs font-bold transition-all active:scale-95 cursor-pointer"
+                    id="export-financial-csv-btn"
+                  >
+                    <Download className="w-4 h-4 text-[#D30014]" />
+                    <span>{lang === "en" ? "Export CSV" : "تصدير CSV"}</span>
+                  </button>
+
+                  <button
+                    onClick={handleExportComprehensiveAnalyticsPDF}
+                    className="flex items-center gap-2 px-3.5 py-1.5 bg-[#D30014] hover:bg-red-700 text-white rounded-lg text-xs font-black transition-all shadow-md active:scale-95 cursor-pointer"
+                    id="export-financial-pdf-btn"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>{lang === "en" ? "Export PDF" : "تصدير PDF"}</span>
+                  </button>
+                </div>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-widest font-bold bg-[#0d0d0d]">
+                      <th className="py-3 px-4">{t.finProvinceCol}</th>
+                      <th className="py-3 px-4 text-center">{t.finPartnersCol}</th>
+                      <th className="py-3 px-4 text-center">{t.finUsersCol}</th>
+                      <th className="py-3 px-4 text-center">{lang === "en" ? "B2B Rev (IQD)" : "إيراد B2B (د.ع)"}</th>
+                      <th className="py-3 px-4 text-center">{lang === "en" ? "B2C Rev (IQD)" : "إيراد B2C (د.ع)"}</th>
+                      <th className="py-3 px-4 text-right">{t.finRevenueCol}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-900 text-sm font-semibold text-gray-300">
+                    {liveProvinceBreakdown
+                      .filter(pb => {
+                        if (!analyticsProvinceSearch.trim()) return true;
+                        const query = analyticsProvinceSearch.trim().toLowerCase();
+                        return pb.province.toLowerCase().includes(query) || pb.provinceAr.includes(query);
+                      })
+                      .sort((a, b) => {
+                        if (analyticsSortBy === "revenue") {
+                          return (b.collectedB2B + b.collectedB2C) - (a.collectedB2B + a.collectedB2C);
+                        } else if (analyticsSortBy === "members") {
+                          return b.users - a.users;
+                        } else if (analyticsSortBy === "partners") {
+                          return b.partners - a.partners;
+                        } else {
+                          return a.province.localeCompare(b.province);
+                        }
+                      })
+                      .map((pb, idx) => (
+                        <tr key={idx} className="hover:bg-white/[0.02] transition-colors">
+                          <td className="py-3.5 px-4 font-bold text-white flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-[#D30014]"></span>
+                            <span>{lang === "en" ? pb.province : pb.provinceAr}</span>
+                            <span className="text-[11px] text-gray-500 font-normal">({lang === "en" ? pb.provinceAr : pb.province})</span>
+                          </td>
+                          <td className="py-3.5 px-4 text-center text-white">{pb.partners} / <span className="text-xs text-gray-600">{pb.targetPartners}</span></td>
+                          <td className="py-3.5 px-4 text-center text-white">{pb.users} / <span className="text-xs text-gray-600">{pb.targetUsers}</span></td>
+                          <td className="py-3.5 px-4 text-center text-gray-400">{pb.collectedB2B.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}</td>
+                          <td className="py-3.5 px-4 text-center text-gray-400">{pb.collectedB2C.toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}</td>
+                          <td className="py-3.5 px-4 text-right font-black text-green-400">
+                            {(pb.collectedB2B + pb.collectedB2C).toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                  {/* Table summary totals row */}
+                  <tfoot>
+                    <tr className="border-t-2 border-gray-700 bg-black/40 text-xs font-black text-white">
+                      <td className="py-3 px-4">{lang === "en" ? "Total (19 Governorates)" : "الإجمالي الكلي (19 محافظة)"}</td>
+                      <td className="py-3 px-4 text-center text-[#D30014]">{liveProvinceBreakdown.reduce((sum, pb) => sum + pb.partners, 0)}</td>
+                      <td className="py-3 px-4 text-center text-blue-400">{liveProvinceBreakdown.reduce((sum, pb) => sum + pb.users, 0)}</td>
+                      <td className="py-3 px-4 text-center text-gray-300">{liveProvinceBreakdown.reduce((sum, pb) => sum + pb.collectedB2B, 0).toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}</td>
+                      <td className="py-3 px-4 text-center text-gray-300">{liveProvinceBreakdown.reduce((sum, pb) => sum + pb.collectedB2C, 0).toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}</td>
+                      <td className="py-3 px-4 text-right text-green-400 text-sm">
+                        {liveProvinceBreakdown.reduce((sum, pb) => sum + pb.collectedB2B + pb.collectedB2C, 0).toLocaleString()} {lang === "en" ? "IQD" : "د.ع"}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        )}
 
         {/* ----------------- FILTER CONTROLS FOR CRUD TABLES ----------------- */}
         {!isLoading && activeTab !== "analytics" && (
