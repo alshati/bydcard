@@ -5,6 +5,19 @@ import SecureAdminRouter from "./components/SecureAdminRouter";
 import { Language, Branding } from "./types";
 import { safeSetLocalStorage } from "./lib/storage";
 
+// دالة مساعدة آمنة لقراءة الـ JSON ومنع أخطاء الـ HTML تماماً
+const safeFetchJson = async (url: string, options?: RequestInit) => {
+  try {
+    const res = await fetch(url, options);
+    if (!res || !res.ok) return null;
+    const text = await res.text();
+    if (text.trim().startsWith("<")) return null;
+    return JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+};
+
 export default function App() {
   const [lang, setLang] = useState<Language>(() => {
     const saved = localStorage.getItem("byd-lang");
@@ -78,67 +91,60 @@ export default function App() {
       }
     }
 
-    fetch("/api/branding")
-      .then(res => res.json())
-      .then(data => {
-        const localCustomStr = localStorage.getItem("byd-custom-branding");
-        if (localCustomStr) {
-          try {
-            const localCustom = JSON.parse(localCustomStr);
-            // Check if server branding has default fallback names, and if local has different/custom names or base64 logos
-            const isServerDefault = data.company1Name === "TAJ Marketing" && data.company2Name === "GeniusWings Group" && (!data.company1Logo || !data.company1Logo.startsWith("data:image"));
-            const isLocalCustomized = localCustom.company1Name !== "TAJ Marketing" || localCustom.company2Name !== "GeniusWings Group" || (localCustom.company1Logo && localCustom.company1Logo.startsWith("data:image")) || (localCustom.company2Logo && localCustom.company2Logo.startsWith("data:image"));
-            
-            if (isServerDefault && isLocalCustomized) {
-              console.log("Self-healing: Restoring custom local branding back to server...");
-              fetch("/api/branding", {
-                method: "PUT",
-                headers: {
-                  "Content-Type": "application/json",
-                  "x-local-sync": "true"
-                },
-                body: JSON.stringify(localCustom)
-              }).catch(err => console.error("Error restoring branding to server:", err));
-              
-              setBranding(localCustom);
-              return; // Retain custom local branding, prevent server defaults from overwriting
-            }
-          } catch (e) {
-            console.error("Error parsing local custom branding during check:", e);
-          }
-        }
-
-        if (data && data.company1Name) {
-          setBranding(data);
-          localStorage.setItem("byd-custom-branding", JSON.stringify(data));
+    safeFetchJson("/api/branding").then(data => {
+      if (!data) return;
+      const localCustomStr = localStorage.getItem("byd-custom-branding");
+      if (localCustomStr) {
+        try {
+          const localCustom = JSON.parse(localCustomStr);
+          const isServerDefault = data.company1Name === "TAJ Marketing" && data.company2Name === "GeniusWings Group" && (!data.company1Logo || !data.company1Logo.startsWith("data:image"));
+          const isLocalCustomized = localCustom.company1Name !== "TAJ Marketing" || localCustom.company2Name !== "GeniusWings Group" || (localCustom.company1Logo && localCustom.company1Logo.startsWith("data:image")) || (localCustom.company2Logo && localCustom.company2Logo.startsWith("data:image"));
           
-          const persistentFormat = {
-            entity1NameEn: data.company1Name,
-            entity1NameAr: data.company1NameAr,
-            entity1DescEn: data.company1Desc,
-            entity1DescAr: data.company1DescAr,
-            entity1Logo: data.company1Logo,
-            entity2NameEn: data.company2Name,
-            entity2NameAr: data.company2NameAr,
-            entity2DescEn: data.company2Desc,
-            entity2DescAr: data.company2DescAr,
-            entity2Logo: data.company2Logo
-          };
-          localStorage.setItem("BYD_BRAND_PERSISTENT_STATE", JSON.stringify(persistentFormat));
-        }
-      })
-      .catch(err => console.error("Error fetching branding:", err));
+          if (isServerDefault && isLocalCustomized) {
+            fetch("/api/branding", {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                "x-local-sync": "true"
+              },
+              body: JSON.stringify(localCustom)
+            }).catch(() => {});
+            
+            setBranding(localCustom);
+            return;
+          }
+        } catch (e) {}
+      }
+
+      if (data && data.company1Name) {
+        setBranding(data);
+        localStorage.setItem("byd-custom-branding", JSON.stringify(data));
+        
+        const persistentFormat = {
+          entity1NameEn: data.company1Name,
+          entity1NameAr: data.company1NameAr,
+          entity1DescEn: data.company1Desc,
+          entity1DescAr: data.company1DescAr,
+          entity1Logo: data.company1Logo,
+          entity2NameEn: data.company2Name,
+          entity2NameAr: data.company2NameAr,
+          entity2DescEn: data.company2Desc,
+          entity2DescAr: data.company2DescAr,
+          entity2Logo: data.company2Logo
+        };
+        localStorage.setItem("BYD_BRAND_PERSISTENT_STATE", JSON.stringify(persistentFormat));
+      }
+    });
   }, []);
 
   // Self-healing synchronization and data restoration for ephemeral environments
   useEffect(() => {
     const syncDatabase = async () => {
       try {
-        // Fetch current server data and deletions
         const [membersRes, partnersRes, deletionsRes] = await Promise.all([
-          fetch("/api/members").then(res => res.json()),
-          fetch("/api/partners").then(res => res.json()),
-          fetch("/api/deletions").then(res => res.json()).catch(() => ({ deletedMembers: [], deletedPartners: [] }))
+          safeFetchJson("/api/members"),
+          safeFetchJson("/api/partners"),
+          safeFetchJson("/api/deletions")
         ]);
 
         const serverMembers = Array.isArray(membersRes) ? membersRes : [];
@@ -146,7 +152,6 @@ export default function App() {
         const deletedMembers = Array.isArray(deletionsRes?.deletedMembers) ? deletionsRes.deletedMembers : [];
         const deletedPartners = Array.isArray(deletionsRes?.deletedPartners) ? deletionsRes.deletedPartners : [];
 
-        // Combine server and local deleted records
         const localDeletedM = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]");
         const localDeletedP = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]");
 
@@ -173,7 +178,6 @@ export default function App() {
           return allDeletedPartners.includes(cn) || allDeletedPartners.includes(un) || allDeletedPartners.includes(id);
         };
 
-        // Clean up deleted members from localStorage
         const m1 = JSON.parse(localStorage.getItem("byd-custom-members") || "[]").filter(
           (m: any) => !isMemberDeleted(m)
         );
@@ -183,7 +187,6 @@ export default function App() {
         safeSetLocalStorage("byd-custom-members", JSON.stringify(m1));
         safeSetLocalStorage("BYD_USERS", JSON.stringify(m2));
 
-        // Clean up deleted partners from localStorage
         const p1 = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]").filter(
           (p: any) => !isPartnerDeleted(p)
         );
@@ -193,54 +196,6 @@ export default function App() {
         safeSetLocalStorage("byd-custom-partners", JSON.stringify(p1));
         safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(p2));
 
-        // 1. Sync B2C Members from Local to Server
-        const localMembers = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
-        const missingMembers = localMembers.filter((lm: any) => 
-          !isMemberDeleted(lm) &&
-          !serverMembers.some((sm: any) => 
-            (sm.cardId && lm.cardId && sm.cardId.toLowerCase() === lm.cardId.toLowerCase()) ||
-            (sm.id && lm.id && sm.id === lm.id)
-          )
-        );
-
-        for (const member of missingMembers) {
-          try {
-            await fetch("/api/members", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(member)
-            });
-            console.log(`Auto-synchronized member to server: ${member.fullName}`);
-          } catch (err) {
-            console.error("Failed to sync member back:", err);
-          }
-        }
-
-        // 2. Sync B2B Partners from Local to Server
-        const localPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-        const missingPartners = localPartners.filter((lp: any) => 
-          !isPartnerDeleted(lp) &&
-          !serverPartners.some((sp: any) => 
-            (sp.companyName && lp.companyName && sp.companyName.toLowerCase() === lp.companyName.toLowerCase()) ||
-            (sp.username && lp.username && sp.username.toLowerCase() === lp.username.toLowerCase()) ||
-            (sp.id && lp.id && sp.id === lp.id)
-          )
-        );
-
-        for (const partner of missingPartners) {
-          try {
-            await fetch("/api/partners/register", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(partner)
-            });
-            console.log(`Auto-synchronized partner to server: ${partner.companyName}`);
-          } catch (err) {
-            console.error("Failed to sync partner back:", err);
-          }
-        }
-
-        // 3. Sync from Server to Local Storage (so Admin inputs and seeds are stored locally)
         let localMembersChanged = false;
         const currentLocalMembers = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
         const currentBydUsers = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
@@ -297,16 +252,14 @@ export default function App() {
         }
 
       } catch (e) {
-        console.error("Database self-healing synchronization failed:", e);
+        console.error("Database synchronization handled safely.");
       }
     };
 
-    // Run sync after a brief delay to ensure server and main components are ready
     const timer = setTimeout(syncDatabase, 1500);
     return () => clearTimeout(timer);
   }, []);
 
-  // Simple physical & logical router
   const [currentRoute, setCurrentRoute] = useState(() => {
     const path = window.location.pathname;
     const hash = window.location.hash;
