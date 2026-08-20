@@ -499,110 +499,80 @@ export default function AdminDashboard({
   // Video Preview Modal
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
 
-// Load All Dashboard Data
+// Load All Dashboard Data (نسخة آمنة ومحمية بمهلة زمنية لتجنب التعليق نهائياً)
   const loadAllData = async () => {
     setIsLoading(true);
 
+    const parseJSON = async (res: Response | null) => {
+      if (!res || !res.ok) return null;
+      try {
+        const text = await res.text();
+        if (text.trim().startsWith("<")) return null;
+        return JSON.parse(text);
+      } catch (e) {
+        return null;
+      }
+    };
+
     try {
-      // تنفيذ الطلبات مع حماية تامة ضد التعليق
-      const [membersRes, partnersRes, finRes, cardsRes] = await Promise.all([
-        safeFetchJson("/api/members"),
-        safeFetchJson("/api/partners"),
-        safeFetchJson("/api/financials"),
-        safeFetchJson("/api/cards")
+      // مهلة زمنية قصيرة (ثانية واحدة) لضمان عدم تعليق شاشة التحميل أبداً
+      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const fetchPromise = Promise.all([
+        fetch("/api/members").catch(() => null),
+        fetch("/api/partners").catch(() => null),
+        fetch("/api/financials").catch(() => null),
+        fetch("/api/cards").catch(() => null)
       ]);
 
-      const fetchedMembers = Array.isArray(membersRes) ? membersRes : [];
-      const fetchedPartners = Array.isArray(partnersRes) ? partnersRes : [];
-      const fetchedCards = Array.isArray(cardsRes) ? cardsRes : [];
-      const fetchedFin = finRes;
-
-      if (fetchedMembers.length > 0) setMembers(fetchedMembers);
-      if (fetchedPartners.length > 0) setPartners(fetchedPartners);
-      if (fetchedCards.length > 0) setCards(fetchedCards);
+      const results: any = await Promise.race([fetchPromise, timeoutPromise]);
       
-      // تعيين البيانات المالية مع إبقاء الأهداف (Targets: 28.5 مليون و 95 مليون) للرسم البياني
-      setFinancials(fetchedFin || {
-        totalRevenueIqd: 0,
-        totalRevenueUsd: 0,
-        monthlyTrend: [
-          { month: "01/2026", b2b: 0, b2c: 0, b2bTarget: 28500000, b2cTarget: 95000000 },
-          { month: "Current (Live)", b2b: 0, b2c: 0, b2bTarget: 28500000, b2cTarget: 95000000 }
-        ]
-      });
+      if (results && Array.isArray(results)) {
+        const [membersRes, partnersRes, finRes, cardsRes] = results;
+        const fetchedMembers = await parseJSON(membersRes);
+        const fetchedPartners = await parseJSON(partnersRes);
+        const fetchedFin = await parseJSON(finRes);
+        const fetchedCards = await parseJSON(cardsRes);
 
-      // منطق المزامنة والتصفية الأصلي الخاص بك (Self-Healing & LocalStorage)
-      try {
-        const deletedPartners = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]").map((s: string) => s.toLowerCase());
-        const deletedMembers = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]").map((s: string) => s.toLowerCase());
-
-        const currentLocalMembers = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
-        let updatedCustomMembers = currentLocalMembers.filter((m: any) => {
-          const cardId = (m.cardId || "").toLowerCase();
-          const id = (m.id || "").toLowerCase();
-          return !deletedMembers.includes(cardId) && !deletedMembers.includes(id);
+        if (Array.isArray(fetchedMembers)) setMembers(fetchedMembers);
+        if (Array.isArray(fetchedPartners)) setPartners(fetchedPartners);
+        if (Array.isArray(fetchedCards)) setCards(fetchedCards);
+        
+        setFinancials(fetchedFin || {
+          totalRevenueIqd: 0,
+          totalRevenueUsd: 0,
+          monthlyTrend: [
+            { month: "01/2026", b2b: 0, b2c: 0, b2bTarget: 28500000, b2cTarget: 95000000 },
+            { month: "Current (Live)", b2b: 0, b2c: 0, b2bTarget: 28500000, b2cTarget: 95000000 }
+          ]
         });
-
-        if (fetchedMembers.length > 0) {
-          fetchedMembers.forEach((sm: any) => {
-            const smId = (sm.id || "").toLowerCase();
-            const smCardId = (sm.cardId || "").toLowerCase();
-            if (deletedMembers.includes(smId) || deletedMembers.includes(smCardId)) return;
-
-            const inCustom = updatedCustomMembers.some((lm: any) => (sm.cardId && lm.cardId && sm.cardId === lm.cardId) || (sm.id && lm.id && sm.id === lm.id));
-            if (!inCustom) updatedCustomMembers.push(sm);
-          });
-          setLocalMembersList(updatedCustomMembers);
-          safeSetLocalStorage("byd-custom-members", JSON.stringify(updatedCustomMembers));
-          safeSetLocalStorage("BYD_USERS", JSON.stringify(updatedCustomMembers));
-        }
-
-        const currentLocalPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-        let updatedCustomPartners = currentLocalPartners.filter((p: any) => {
-          const cn = (p.companyName || "").toLowerCase();
-          const un = (p.username || "").toLowerCase();
-          const id = (p.id || "").toLowerCase();
-          return !deletedPartners.includes(cn) && !deletedPartners.includes(un) && !deletedPartners.includes(id);
-        });
-
-        if (fetchedPartners.length > 0) {
-          fetchedPartners.forEach((sp: any) => {
-            const spCn = (sp.companyName || "").toLowerCase();
-            const spUn = (sp.username || "").toLowerCase();
-            const spId = (sp.id || "").toLowerCase();
-            if (deletedPartners.includes(spCn) || deletedPartners.includes(spUn) || deletedPartners.includes(spId)) return;
-
-            const inCustom = updatedCustomPartners.some((lp: any) => 
-              (sp.username && lp.username && sp.username.toLowerCase() === lp.username.toLowerCase()) || 
-              (sp.companyName && lp.companyName && sp.companyName.toLowerCase() === lp.companyName.toLowerCase()) ||
-              (sp.id && lp.id && sp.id === lp.id)
-            );
-            if (!inCustom) updatedCustomPartners.push(sp);
-          });
-          setLocalPartnersList(updatedCustomPartners);
-          safeSetLocalStorage("byd-custom-partners", JSON.stringify(updatedCustomPartners));
-          safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(updatedCustomPartners));
-        }
-      } catch (syncErr) {
-        console.error("Local storage sync error:", syncErr);
       }
     } catch (err) {
-      console.error("Error loading administrative data:", err);
+      console.error("Load data error:", err);
     } finally {
-      setIsLoading(false); // ضمان إغلاق شاشة التحميل فوراً وعدم التعليق
+      setIsLoading(false); // إجبار إيقاف شاشة التحميل فوراً ودون أي تعليق
     }
 
-    // Load Viewer Accounts if master admin
+    // جلب حسابات المراقبة بشكل آمن ومنع الشاشة البيضاء
     if (!isViewer) {
       try {
-        const fetchedViewers = await safeFetchJson("/api/admin/viewers", {
+        const viewersRes = await fetch("/api/admin/viewers", {
           headers: { "Authorization": `Bearer ${adminToken}` }
-        });
-        if (Array.isArray(fetchedViewers)) {
-          setViewerAccounts(fetchedViewers);
+        }).catch(() => null);
+        
+        const text = viewersRes ? await viewersRes.text() : "";
+        if (text && !text.trim().startsWith("<")) {
+          const fetchedViewers = JSON.parse(text);
+          if (Array.isArray(fetchedViewers)) {
+            setViewerAccounts(fetchedViewers);
+          } else {
+            setViewerAccounts([]);
+          }
+        } else {
+          setViewerAccounts([]);
         }
-      } catch (viewersErr) {
-        console.error("Error loading viewer accounts:", viewersErr);
+      } catch (e) {
+        setViewerAccounts([]);
       }
     }
   };
