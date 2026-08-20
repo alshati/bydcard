@@ -499,11 +499,10 @@ export default function AdminDashboard({
   // Video Preview Modal
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
 
-// Load All Dashboard Data (النسخة النهائية مع مهلة طوارئ لإلغاء التعليق فوراً)
+// Load All Dashboard Data (النسخة الكاملة الآمنة 100% مع حسابات المراقبة والتدقيق)
   const loadAllData = async () => {
     setIsLoading(true);
 
-    // مهلة طوارئ إجبارية: خلال ثانية واحدة سيتم إخفاء شاشة التحميل قسراً لكي لا تعلق الصفحة أبداً
     const emergencyTimer = setTimeout(() => {
       setIsLoading(false);
     }, 1000);
@@ -545,7 +544,7 @@ export default function AdminDashboard({
         ]
       });
 
-      // مزامنة محلية آمنة دون تعطيل الواجهة
+      // مزامنة البيانات المحلية
       try {
         const localMembers = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
         const localPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
@@ -565,28 +564,129 @@ export default function AdminDashboard({
       console.error("Load error:", err);
     } finally {
       clearTimeout(emergencyTimer);
-      setIsLoading(false); // إيقاف التحميل فوراً
+      setIsLoading(false);
     }
 
-    // جلب حسابات المراقبة بشكل آمن
+    // Load Viewer Accounts if master admin (تم إرجاع الكود كاملاً هنا)
     if (!isViewer) {
       try {
         const viewersRes = await fetch("/api/admin/viewers", {
           headers: { "Authorization": `Bearer ${adminToken}` }
         }).catch(() => null);
-        
-        const text = viewersRes ? await viewersRes.text() : "";
-        if (text && !text.trim().startsWith("<")) {
-          const data = JSON.parse(text);
-          setViewerAccounts(Array.isArray(data) ? data : []);
+
+        const fetchedViewers = await parseJSON(viewersRes);
+        if (Array.isArray(fetchedViewers)) {
+          setViewerAccounts(fetchedViewers);
         } else {
           setViewerAccounts([]);
         }
-      } catch (e) {
+      } catch (viewersErr) {
+        console.error("Error loading viewer accounts:", viewersErr);
         setViewerAccounts([]);
       }
     }
   };
+
+  const handleCreateViewerAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!viewerForm.username || !viewerForm.password) {
+      setViewerMsg({
+        type: "error",
+        text: lang === "en" ? "Username and Password are required." : "اسم المستخدم وكلمة المرور مطلوبان."
+      });
+      return;
+    }
+
+    setViewerLoading(true);
+    setViewerMsg(null);
+
+    try {
+      const res = await fetch("/api/admin/viewers", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${adminToken}`
+        },
+        body: JSON.stringify(viewerForm)
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (Array.isArray(data.viewers)) {
+          setViewerAccounts(data.viewers);
+        } else if (data.viewer) {
+          setViewerAccounts((prev) => [data.viewer, ...prev.filter((v) => v.id !== data.viewer.id)]);
+        }
+        setViewerForm({ username: "", password: "", name: "", notes: "" });
+        setViewerMsg({
+          type: "success",
+          text: lang === "en" ? "Monitoring account created successfully!" : "تم إنشاء حساب المراقبة بنجاح وبشكل فوري!"
+        });
+      } else {
+        setViewerMsg({
+          type: "error",
+          text: lang === "en" ? data.message : (data.messageAr || data.message)
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      setViewerMsg({
+        type: "error",
+        text: lang === "en" ? "Failed to create account." : "فشل إنشاء الحساب."
+      });
+    } finally {
+      setViewerLoading(false);
+    }
+  };
+
+  const handleDeleteViewerAccount = async (id: string, username: string) => {
+    if (!window.confirm(lang === "en" ? `Are you sure you want to delete auditor account '${username}'?` : `هل أنت متأكد من حذف حساب المراقبة '${username}'؟`)) {
+      return;
+    }
+
+    const previousAccounts = [...viewerAccounts];
+    setViewerAccounts((prev) => prev.filter((v) => v.id !== id && v.username !== username));
+
+    const token = adminToken || localStorage.getItem("byd-admin-token") || "";
+
+    try {
+      const res = await fetch(`/api/admin/viewers/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (Array.isArray(data.viewers)) {
+          setViewerAccounts(data.viewers);
+        }
+      } else {
+        setViewerAccounts(previousAccounts);
+        alert(lang === "en" ? (data.message || "Failed to delete") : (data.messageAr || data.message || "فشل حذف الحساب"));
+      }
+    } catch (err) {
+      console.error(err);
+      setViewerAccounts(previousAccounts);
+      alert(lang === "en" ? "Failed to delete account." : "فشل حذف الحساب.");
+    }
+  };
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2500);
+  };
+
+  const financialsResOrMock = async (res: Response) => {
+    try {
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    loadAllData();
+  }, [adminToken]);
   
   // MEMBER CRUD ACTIONS
   const handleToggleMemberStatus = async (member: Member) => {
