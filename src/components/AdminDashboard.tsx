@@ -489,6 +489,19 @@ export default function AdminDashboard({
 // Load All Dashboard Data
   const loadAllData = async () => {
     setIsLoading(true);
+    
+    // دالة آمنة لقراءة الـ JSON وتجنب خطأ الـ HTML
+    const safeJson = async (res: Response) => {
+      try {
+        if (!res || !res.ok) return null;
+        const text = await res.text();
+        if (text.trim().startsWith("<")) return null; // إذا كان الرد HTML يتم تخطيه
+        return JSON.parse(text);
+      } catch (e) {
+        return null;
+      }
+    };
+
     try {
       const [membersRes, partnersRes, finRes, cardsRes] = await Promise.all([
         fetch("/api/members").catch(() => ({ ok: false })) as any,
@@ -497,14 +510,16 @@ export default function AdminDashboard({
         fetch("/api/cards").catch(() => ({ ok: false })) as any
       ]);
 
-      if (membersRes.ok && partnersRes.ok && finRes.ok) {
-        const fetchedMembers = await membersRes.json();
-        const fetchedPartners = await partnersRes.json();
+      const fetchedMembers = membersRes.ok ? await safeJson(membersRes) : null;
+      const fetchedPartners = partnersRes.ok ? await safeJson(partnersRes) : null;
+      const fetchedFin = finRes.ok ? await safeJson(finRes) : null;
+      const fetchedCards = cardsRes.ok ? await safeJson(cardsRes) : null;
+
+      if (Array.isArray(fetchedMembers)) {
         setMembers(fetchedMembers);
-        setPartners(fetchedPartners);
-        setFinancials(await financialsResOrMock(finRes));
-        if (cardsRes.ok) {
-          setCards(await cardsRes.json());
+        setFinancials(fetchedFin || await financialsResOrMock(finRes));
+        if (Array.isArray(fetchedCards)) {
+          setCards(fetchedCards);
         }
 
         // Bidirectional sync: make sure any server members/partners are in local storage so metrics are perfectly consistent!
@@ -548,54 +563,48 @@ export default function AdminDashboard({
             safeSetLocalStorage("BYD_USERS", JSON.stringify(updatedBydUsers));
           }
 
-          const currentLocalPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-          const currentBydCompanies = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
-          let updatedCustomPartners = currentLocalPartners.filter((p: any) => {
-            const cn = (p.companyName || "").toLowerCase();
-            const un = (p.username || "").toLowerCase();
-            const id = (p.id || "").toLowerCase();
-            return !deletedPartners.includes(cn) && !deletedPartners.includes(un) && !deletedPartners.includes(id);
-          });
-          let updatedBydCompanies = currentBydCompanies.filter((p: any) => {
-            const cn = (p.companyName || "").toLowerCase();
-            const un = (p.username || "").toLowerCase();
-            const id = (p.id || "").toLowerCase();
-            return !deletedPartners.includes(cn) && !deletedPartners.includes(un) && !deletedPartners.includes(id);
-          });
-          let localPartnersChanged = false;
+          if (Array.isArray(fetchedPartners)) {
+            setPartners(fetchedPartners);
+            const currentLocalPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
+            const currentBydCompanies = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
+            let updatedCustomPartners = currentLocalPartners.filter((p: any) => {
+              const cn = (p.companyName || "").toLowerCase();
+              const un = (p.username || "").toLowerCase();
+              const id = (p.id || "").toLowerCase();
+              return !deletedPartners.includes(cn) && !deletedPartners.includes(un) && !deletedPartners.includes(id);
+            });
+            let updatedBydCompanies = currentBydCompanies.filter((p: any) => {
+              const cn = (p.companyName || "").toLowerCase();
+              const un = (p.username || "").toLowerCase();
+              const id = (p.id || "").toLowerCase();
+              return !deletedPartners.includes(cn) && !deletedPartners.includes(un) && !deletedPartners.includes(id);
+            });
+            let localPartnersChanged = false;
 
-          fetchedPartners.forEach((sp: any) => {
-            const spCn = (sp.companyName || "").toLowerCase();
-            const spUn = (sp.username || "").toLowerCase();
-            const spId = (sp.id || "").toLowerCase();
-            if (deletedPartners.includes(spCn) || deletedPartners.includes(spUn) || deletedPartners.includes(spId)) return;
+            fetchedPartners.forEach((sp: any) => {
+              const spCn = (sp.companyName || "").toLowerCase();
+              const spUn = (sp.username || "").toLowerCase();
+              const spId = (sp.id || "").toLowerCase();
+              if (deletedPartners.includes(spCn) || deletedPartners.includes(spUn) || deletedPartners.includes(spId)) return;
 
-            const inCustom = updatedCustomPartners.some((lp: any) => 
-              (sp.username && lp.username && sp.username.toLowerCase() === lp.username.toLowerCase()) || 
-              (sp.companyName && lp.companyName && sp.companyName.toLowerCase() === lp.companyName.toLowerCase()) ||
-              (sp.id && lp.id && sp.id === lp.id)
-            );
-            if (!inCustom) {
-              updatedCustomPartners.push(sp);
-              localPartnersChanged = true;
+              const inCustom = updatedCustomPartners.some((lp: any) => 
+                (sp.username && lp.username && sp.username.toLowerCase() === lp.username.toLowerCase()) || 
+                (sp.companyName && lp.companyName && sp.companyName.toLowerCase() === lp.companyName.toLowerCase()) ||
+                (sp.id && lp.id && sp.id === lp.id)
+              );
+              if (!inCustom) {
+                updatedCustomPartners.push(sp);
+                localPartnersChanged = true;
+              }
+            });
+
+            if (localPartnersChanged) {
+              safeSetLocalStorage("byd-custom-partners", JSON.stringify(updatedCustomPartners));
+              safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(updatedBydCompanies));
             }
-            const inByd = updatedBydCompanies.some((lp: any) => 
-              (sp.username && lp.username && sp.username.toLowerCase() === lp.username.toLowerCase()) || 
-              (sp.companyName && lp.companyName && sp.companyName.toLowerCase() === lp.companyName.toLowerCase()) ||
-              (sp.id && lp.id && sp.id === lp.id)
-            );
-            if (!inByd) {
-              updatedBydCompanies.push(sp);
-              localPartnersChanged = true;
-            }
-          });
-
-          if (localPartnersChanged) {
-            safeSetLocalStorage("byd-custom-partners", JSON.stringify(updatedCustomPartners));
-            safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(updatedBydCompanies));
           }
 
-          if (localMembersChanged || localPartnersChanged) {
+          if (localMembersChanged) {
             window.dispatchEvent(new Event("storage-sync-updated"));
             window.dispatchEvent(new Event("storage"));
           }
@@ -615,18 +624,15 @@ export default function AdminDashboard({
         const viewersRes = await fetch("/api/admin/viewers", {
           headers: { "Authorization": `Bearer ${adminToken}` }
         });
-        if (viewersRes.ok) {
-          const fetchedViewers = await viewersRes.json();
-          if (Array.isArray(fetchedViewers)) {
-            setViewerAccounts(fetchedViewers);
-          }
+        const fetchedViewers = await safeJson(viewersRes);
+        if (Array.isArray(fetchedViewers)) {
+          setViewerAccounts(fetchedViewers);
         }
       } catch (viewersErr) {
         console.error("Error loading viewer accounts:", viewersErr);
       }
     }
   };
-
   // MEMBER CRUD ACTIONS
   const handleToggleMemberStatus = async (member: Member) => {
     const currentActive = isMemberActive(member);
