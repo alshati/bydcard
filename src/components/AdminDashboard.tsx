@@ -499,9 +499,14 @@ export default function AdminDashboard({
   // Video Preview Modal
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
 
-// Load All Dashboard Data (نسخة آمنة ومحمية بمهلة زمنية لتجنب التعليق نهائياً)
+// Load All Dashboard Data (النسخة النهائية مع مهلة طوارئ لإلغاء التعليق فوراً)
   const loadAllData = async () => {
     setIsLoading(true);
+
+    // مهلة طوارئ إجبارية: خلال ثانية واحدة سيتم إخفاء شاشة التحميل قسراً لكي لا تعلق الصفحة أبداً
+    const emergencyTimer = setTimeout(() => {
+      setIsLoading(false);
+    }, 1000);
 
     const parseJSON = async (res: Response | null) => {
       if (!res || !res.ok) return null;
@@ -515,45 +520,55 @@ export default function AdminDashboard({
     };
 
     try {
-      // مهلة زمنية قصيرة (ثانية واحدة) لضمان عدم تعليق شاشة التحميل أبداً
-      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 1000));
-
-      const fetchPromise = Promise.all([
+      const [membersRes, partnersRes, finRes, cardsRes] = await Promise.all([
         fetch("/api/members").catch(() => null),
         fetch("/api/partners").catch(() => null),
         fetch("/api/financials").catch(() => null),
         fetch("/api/cards").catch(() => null)
       ]);
 
-      const results: any = await Promise.race([fetchPromise, timeoutPromise]);
-      
-      if (results && Array.isArray(results)) {
-        const [membersRes, partnersRes, finRes, cardsRes] = results;
-        const fetchedMembers = await parseJSON(membersRes);
-        const fetchedPartners = await parseJSON(partnersRes);
-        const fetchedFin = await parseJSON(finRes);
-        const fetchedCards = await parseJSON(cardsRes);
+      const fetchedMembers = await parseJSON(membersRes);
+      const fetchedPartners = await parseJSON(partnersRes);
+      const fetchedFin = await parseJSON(finRes);
+      const fetchedCards = await parseJSON(cardsRes);
 
-        if (Array.isArray(fetchedMembers)) setMembers(fetchedMembers);
-        if (Array.isArray(fetchedPartners)) setPartners(fetchedPartners);
-        if (Array.isArray(fetchedCards)) setCards(fetchedCards);
-        
-        setFinancials(fetchedFin || {
-          totalRevenueIqd: 0,
-          totalRevenueUsd: 0,
-          monthlyTrend: [
-            { month: "01/2026", b2b: 0, b2c: 0, b2bTarget: 28500000, b2cTarget: 95000000 },
-            { month: "Current (Live)", b2b: 0, b2c: 0, b2bTarget: 28500000, b2cTarget: 95000000 }
-          ]
-        });
-      }
+      if (Array.isArray(fetchedMembers)) setMembers(fetchedMembers);
+      if (Array.isArray(fetchedPartners)) setPartners(fetchedPartners);
+      if (Array.isArray(fetchedCards)) setCards(fetchedCards);
+      
+      setFinancials(fetchedFin || {
+        totalRevenueIqd: 0,
+        totalRevenueUsd: 0,
+        monthlyTrend: [
+          { month: "01/2026", b2b: 0, b2c: 0, b2bTarget: 28500000, b2cTarget: 95000000 },
+          { month: "Current (Live)", b2b: 0, b2c: 0, b2bTarget: 28500000, b2cTarget: 95000000 }
+        ]
+      });
+
+      // مزامنة محلية آمنة دون تعطيل الواجهة
+      try {
+        const localMembers = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
+        const localPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
+        if (Array.isArray(fetchedMembers)) {
+          setLocalMembersList([...fetchedMembers, ...localMembers.filter((lm: any) => !fetchedMembers.find((fm: any) => fm.id === lm.id))]);
+        } else {
+          setLocalMembersList(localMembers);
+        }
+        if (Array.isArray(fetchedPartners)) {
+          setLocalPartnersList([...fetchedPartners, ...localPartners.filter((lp: any) => !fetchedPartners.find((fp: any) => fp.id === lp.id))]);
+        } else {
+          setLocalPartnersList(localPartners);
+        }
+      } catch (e) {}
+
     } catch (err) {
-      console.error("Load data error:", err);
+      console.error("Load error:", err);
     } finally {
-      setIsLoading(false); // إجبار إيقاف شاشة التحميل فوراً ودون أي تعليق
+      clearTimeout(emergencyTimer);
+      setIsLoading(false); // إيقاف التحميل فوراً
     }
 
-    // جلب حسابات المراقبة بشكل آمن ومنع الشاشة البيضاء
+    // جلب حسابات المراقبة بشكل آمن
     if (!isViewer) {
       try {
         const viewersRes = await fetch("/api/admin/viewers", {
@@ -562,12 +577,8 @@ export default function AdminDashboard({
         
         const text = viewersRes ? await viewersRes.text() : "";
         if (text && !text.trim().startsWith("<")) {
-          const fetchedViewers = JSON.parse(text);
-          if (Array.isArray(fetchedViewers)) {
-            setViewerAccounts(fetchedViewers);
-          } else {
-            setViewerAccounts([]);
-          }
+          const data = JSON.parse(text);
+          setViewerAccounts(Array.isArray(data) ? data : []);
         } else {
           setViewerAccounts([]);
         }
