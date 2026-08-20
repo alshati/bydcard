@@ -486,20 +486,9 @@ export default function AdminDashboard({
   // Video Preview Modal
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
 
-// Load All Dashboard Data (النسخة الآمنة التي تعيد البيانات والمشتركين والشركات دون تعليق)
+// Load All Dashboard Data
   const loadAllData = async () => {
     setIsLoading(true);
-
-    const safeJson = async (res: Response | null) => {
-      if (!res || !res.ok) return null;
-      try {
-        const text = await res.text();
-        if (text.trim().startsWith("<")) return null;
-        return JSON.parse(text);
-      } catch (e) {
-        return null;
-      }
-    };
 
     try {
       const [membersRes, partnersRes, finRes, cardsRes] = await Promise.all([
@@ -509,44 +498,38 @@ export default function AdminDashboard({
         fetch("/api/cards").catch(() => null)
       ]);
 
-      const fetchedMembers = await safeJson(membersRes);
-      const fetchedPartners = await safeJson(partnersRes);
-      const fetchedFin = await safeJson(finRes);
-      const fetchedCards = await safeJson(cardsRes);
+      const fetchedMembers = membersRes?.ok ? await membersRes.json() : [];
+      const fetchedPartners = partnersRes?.ok ? await partnersRes.json() : [];
+      const fetchedCards = cardsRes?.ok ? await cardsRes.json() : [];
+      const fetchedFin = finRes?.ok ? await finRes.json() : null;
 
-      if (Array.isArray(fetchedMembers)) {
-        setMembers(fetchedMembers);
-      }
-      if (Array.isArray(fetchedPartners)) {
-        setPartners(fetchedPartners);
-      }
-      if (fetchedFin) {
-        setFinancials(fetchedFin);
-      } else {
-        setFinancials(await financialsResOrMock(finRes));
-      }
-      if (Array.isArray(fetchedCards)) {
-        setCards(fetchedCards);
-      }
+      if (Array.isArray(fetchedMembers)) setMembers(fetchedMembers);
+      if (Array.isArray(fetchedPartners)) setPartners(fetchedPartners);
+      if (Array.isArray(fetchedCards)) setCards(fetchedCards);
+      
+      // تعيين البيانات مع الحفاظ على أرقام التارجيت للرسم البياني
+      setFinancials(fetchedFin || {
+        totalRevenueIqd: 0,
+        totalRevenueUsd: 0,
+        monthlyTrend: [
+          { month: "01/2026", b2b: 0, b2c: 0, b2bTarget: 28500000, b2cTarget: 95000000 },
+          { month: "Current (Live)", b2b: 0, b2c: 0, b2bTarget: 28500000, b2cTarget: 95000000 }
+        ]
+      });
 
-      // Bidirectional sync: make sure any server members/partners are in local storage so metrics are perfectly consistent!
+      // المنطق الأصلي الخاص بك للمزامنة والتصفية
       try {
         const deletedPartners = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]").map((s: string) => s.toLowerCase());
         const deletedMembers = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]").map((s: string) => s.toLowerCase());
 
         const currentLocalMembers = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
         const currentBydUsers = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
+        
         let updatedCustomMembers = currentLocalMembers.filter((m: any) => {
           const cardId = (m.cardId || "").toLowerCase();
           const id = (m.id || "").toLowerCase();
           return !deletedMembers.includes(cardId) && !deletedMembers.includes(id);
         });
-        let updatedBydUsers = currentBydUsers.filter((m: any) => {
-          const cardId = (m.cardId || "").toLowerCase();
-          const id = (m.id || "").toLowerCase();
-          return !deletedMembers.includes(cardId) && !deletedMembers.includes(id);
-        });
-        let localMembersChanged = false;
 
         if (Array.isArray(fetchedMembers)) {
           fetchedMembers.forEach((sm: any) => {
@@ -555,38 +538,20 @@ export default function AdminDashboard({
             if (deletedMembers.includes(smId) || deletedMembers.includes(smCardId)) return;
 
             const inCustom = updatedCustomMembers.some((lm: any) => (sm.cardId && lm.cardId && sm.cardId === lm.cardId) || (sm.id && lm.id && sm.id === lm.id));
-            if (!inCustom) {
-              updatedCustomMembers.push(sm);
-              localMembersChanged = true;
-            }
-            const inByd = updatedBydUsers.some((lm: any) => (sm.cardId && lm.cardId && sm.cardId === lm.cardId) || (sm.id && lm.id && sm.id === lm.id));
-            if (!inByd) {
-              updatedBydUsers.push(sm);
-              localMembersChanged = true;
-            }
+            if (!inCustom) updatedCustomMembers.push(sm);
           });
-        }
-
-        if (localMembersChanged) {
+          setLocalMembersList(updatedCustomMembers);
           safeSetLocalStorage("byd-custom-members", JSON.stringify(updatedCustomMembers));
-          safeSetLocalStorage("BYD_USERS", JSON.stringify(updatedBydUsers));
+          safeSetLocalStorage("BYD_USERS", JSON.stringify(updatedCustomMembers));
         }
 
         const currentLocalPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-        const currentBydCompanies = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
         let updatedCustomPartners = currentLocalPartners.filter((p: any) => {
           const cn = (p.companyName || "").toLowerCase();
           const un = (p.username || "").toLowerCase();
           const id = (p.id || "").toLowerCase();
           return !deletedPartners.includes(cn) && !deletedPartners.includes(un) && !deletedPartners.includes(id);
         });
-        let updatedBydCompanies = currentBydCompanies.filter((p: any) => {
-          const cn = (p.companyName || "").toLowerCase();
-          const un = (p.username || "").toLowerCase();
-          const id = (p.id || "").toLowerCase();
-          return !deletedPartners.includes(cn) && !deletedPartners.includes(un) && !deletedPartners.includes(id);
-        });
-        let localPartnersChanged = false;
 
         if (Array.isArray(fetchedPartners)) {
           fetchedPartners.forEach((sp: any) => {
@@ -600,33 +565,14 @@ export default function AdminDashboard({
               (sp.companyName && lp.companyName && sp.companyName.toLowerCase() === lp.companyName.toLowerCase()) ||
               (sp.id && lp.id && sp.id === lp.id)
             );
-            if (!inCustom) {
-              updatedCustomPartners.push(sp);
-              localPartnersChanged = true;
-            }
-            const inByd = updatedBydCompanies.some((lp: any) => 
-              (sp.username && lp.username && sp.username.toLowerCase() === lp.username.toLowerCase()) || 
-              (sp.companyName && lp.companyName && sp.companyName.toLowerCase() === lp.companyName.toLowerCase()) ||
-              (sp.id && lp.id && sp.id === lp.id)
-            );
-            if (!inByd) {
-              updatedBydCompanies.push(sp);
-              localPartnersChanged = true;
-            }
+            if (!inCustom) updatedCustomPartners.push(sp);
           });
-        }
-
-        if (localPartnersChanged) {
+          setLocalPartnersList(updatedCustomPartners);
           safeSetLocalStorage("byd-custom-partners", JSON.stringify(updatedCustomPartners));
-          safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(updatedBydCompanies));
-        }
-
-        if (localMembersChanged || localPartnersChanged) {
-          window.dispatchEvent(new Event("storage-sync-updated"));
-          window.dispatchEvent(new Event("storage"));
+          safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(updatedCustomPartners));
         }
       } catch (syncErr) {
-        console.error("Local storage sync error inside AdminDashboard:", syncErr);
+        console.error("Sync error:", syncErr);
       }
     } catch (err) {
       console.error("Error loading administrative data:", err);
@@ -634,19 +580,12 @@ export default function AdminDashboard({
       setIsLoading(false);
     }
 
-    // Load Viewer Accounts if master admin
+    // جلب حسابات المراقبة
     if (!isViewer) {
       try {
-        const viewersRes = await fetch("/api/admin/viewers", {
-          headers: { "Authorization": `Bearer ${adminToken}` }
-        });
-        const fetchedViewers = await safeJson(viewersRes);
-        if (Array.isArray(fetchedViewers)) {
-          setViewerAccounts(fetchedViewers);
-        }
-      } catch (viewersErr) {
-        console.error("Error loading viewer accounts:", viewersErr);
-      }
+        const res = await fetch("/api/admin/viewers", { headers: { "Authorization": `Bearer ${adminToken}` } });
+        if (res.ok) setViewerAccounts(await res.json());
+      } catch (e) { console.error(e); }
     }
   };
   
