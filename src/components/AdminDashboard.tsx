@@ -486,46 +486,64 @@ export default function AdminDashboard({
   // Video Preview Modal
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
 
-  // Load All Dashboard Data
+ // Load All Dashboard Data
   const loadAllData = async () => {
     setIsLoading(true);
+    
+    // دالة مساعدة لتجنب انهيار الكود عند تلقي HTML بدلاً من JSON
+    const parseJSON = async (res: Response | null) => {
+      if (!res || !res.ok) return null;
+      try {
+        const text = await res.text();
+        if (text.trim().startsWith("<")) return null; // تخطي صفحات الخطأ (HTML)
+        return JSON.parse(text);
+      } catch (e) {
+        return null;
+      }
+    };
+
     try {
       const [membersRes, partnersRes, finRes, cardsRes] = await Promise.all([
-        fetch("/api/members"),
-        fetch("/api/partners"),
-        fetch("/api/financials"),
-        fetch("/api/cards")
+        fetch("/api/members").catch(() => null),
+        fetch("/api/partners").catch(() => null),
+        fetch("/api/financials").catch(() => null),
+        fetch("/api/cards").catch(() => null)
       ]);
 
-      if (membersRes.ok && partnersRes.ok && finRes.ok) {
-        const fetchedMembers = await membersRes.json();
-        const fetchedPartners = await partnersRes.json();
-        setMembers(fetchedMembers);
-        setPartners(fetchedPartners);
-        setFinancials(await financialsResOrMock(finRes));
-        if (cardsRes.ok) {
-          setCards(await cardsRes.json());
-        }
+      const fetchedMembers = await parseJSON(membersRes);
+      const fetchedPartners = await parseJSON(partnersRes);
+      const fetchedFin = await parseJSON(finRes);
+      const fetchedCards = await parseJSON(cardsRes);
 
-        // Bidirectional sync: make sure any server members/partners are in local storage so metrics are perfectly consistent!
-        try {
-          const deletedPartners = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]").map((s: string) => s.toLowerCase());
-          const deletedMembers = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]").map((s: string) => s.toLowerCase());
+      if (Array.isArray(fetchedMembers)) setMembers(fetchedMembers);
+      if (Array.isArray(fetchedPartners)) setPartners(fetchedPartners);
+      if (Array.isArray(fetchedCards)) setCards(fetchedCards);
+      
+      // تعيين الإحصائيات مع حالة افتراضية آمنة في حال فشل السيرفر
+      setFinancials(fetchedFin || {
+        totalRevenueIqd: 0,
+        totalRevenueUsd: 0,
+        monthlyTrend: [
+          { month: "01/2026", b2b: 0, b2c: 0 },
+          { month: "Current (Live)", b2b: 0, b2c: 0 }
+        ]
+      });
 
-          const currentLocalMembers = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
-          const currentBydUsers = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
-          let updatedCustomMembers = currentLocalMembers.filter((m: any) => {
-            const cardId = (m.cardId || "").toLowerCase();
-            const id = (m.id || "").toLowerCase();
-            return !deletedMembers.includes(cardId) && !deletedMembers.includes(id);
-          });
-          let updatedBydUsers = currentBydUsers.filter((m: any) => {
-            const cardId = (m.cardId || "").toLowerCase();
-            const id = (m.id || "").toLowerCase();
-            return !deletedMembers.includes(cardId) && !deletedMembers.includes(id);
-          });
-          let localMembersChanged = false;
+      // Bidirectional sync: make sure any server members/partners are in local storage so metrics are perfectly consistent!
+      try {
+        const deletedPartners = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]").map((s: string) => s.toLowerCase());
+        const deletedMembers = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]").map((s: string) => s.toLowerCase());
 
+        const currentLocalMembers = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
+        const currentBydUsers = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
+        
+        let updatedCustomMembers = currentLocalMembers.filter((m: any) => {
+          const cardId = (m.cardId || "").toLowerCase();
+          const id = (m.id || "").toLowerCase();
+          return !deletedMembers.includes(cardId) && !deletedMembers.includes(id);
+        });
+
+        if (Array.isArray(fetchedMembers)) {
           fetchedMembers.forEach((sm: any) => {
             const smId = (sm.id || "").toLowerCase();
             const smCardId = (sm.cardId || "").toLowerCase();
@@ -534,36 +552,25 @@ export default function AdminDashboard({
             const inCustom = updatedCustomMembers.some((lm: any) => (sm.cardId && lm.cardId && sm.cardId === lm.cardId) || (sm.id && lm.id && sm.id === lm.id));
             if (!inCustom) {
               updatedCustomMembers.push(sm);
-              localMembersChanged = true;
-            }
-            const inByd = updatedBydUsers.some((lm: any) => (sm.cardId && lm.cardId && sm.cardId === lm.cardId) || (sm.id && lm.id && sm.id === lm.id));
-            if (!inByd) {
-              updatedBydUsers.push(sm);
-              localMembersChanged = true;
             }
           });
+        }
 
-          if (localMembersChanged) {
-            safeSetLocalStorage("byd-custom-members", JSON.stringify(updatedCustomMembers));
-            safeSetLocalStorage("BYD_USERS", JSON.stringify(updatedBydUsers));
-          }
+        if (Array.isArray(fetchedMembers)) {
+          safeSetLocalStorage("byd-custom-members", JSON.stringify(updatedCustomMembers));
+          safeSetLocalStorage("BYD_USERS", JSON.stringify(updatedCustomMembers));
+        }
 
-          const currentLocalPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-          const currentBydCompanies = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
-          let updatedCustomPartners = currentLocalPartners.filter((p: any) => {
-            const cn = (p.companyName || "").toLowerCase();
-            const un = (p.username || "").toLowerCase();
-            const id = (p.id || "").toLowerCase();
-            return !deletedPartners.includes(cn) && !deletedPartners.includes(un) && !deletedPartners.includes(id);
-          });
-          let updatedBydCompanies = currentBydCompanies.filter((p: any) => {
-            const cn = (p.companyName || "").toLowerCase();
-            const un = (p.username || "").toLowerCase();
-            const id = (p.id || "").toLowerCase();
-            return !deletedPartners.includes(cn) && !deletedPartners.includes(un) && !deletedPartners.includes(id);
-          });
-          let localPartnersChanged = false;
+        // نفس المنطق للشركاء...
+        const currentLocalPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
+        let updatedCustomPartners = currentLocalPartners.filter((p: any) => {
+          const cn = (p.companyName || "").toLowerCase();
+          const un = (p.username || "").toLowerCase();
+          const id = (p.id || "").toLowerCase();
+          return !deletedPartners.includes(cn) && !deletedPartners.includes(un) && !deletedPartners.includes(id);
+        });
 
+        if (Array.isArray(fetchedPartners)) {
           fetchedPartners.forEach((sp: any) => {
             const spCn = (sp.companyName || "").toLowerCase();
             const spUn = (sp.username || "").toLowerCase();
@@ -577,38 +584,42 @@ export default function AdminDashboard({
             );
             if (!inCustom) {
               updatedCustomPartners.push(sp);
-              localPartnersChanged = true;
-            }
-            const inByd = updatedBydCompanies.some((lp: any) => 
-              (sp.username && lp.username && sp.username.toLowerCase() === lp.username.toLowerCase()) || 
-              (sp.companyName && lp.companyName && sp.companyName.toLowerCase() === lp.companyName.toLowerCase()) ||
-              (sp.id && lp.id && sp.id === lp.id)
-            );
-            if (!inByd) {
-              updatedBydCompanies.push(sp);
-              localPartnersChanged = true;
             }
           });
-
-          if (localPartnersChanged) {
-            safeSetLocalStorage("byd-custom-partners", JSON.stringify(updatedCustomPartners));
-            safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(updatedBydCompanies));
-          }
-
-          if (localMembersChanged || localPartnersChanged) {
-            window.dispatchEvent(new Event("storage-sync-updated"));
-            window.dispatchEvent(new Event("storage"));
-          }
-        } catch (syncErr) {
-          console.error("Local storage sync error inside AdminDashboard:", syncErr);
         }
+        safeSetLocalStorage("byd-custom-partners", JSON.stringify(updatedCustomPartners));
+        safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(updatedCustomPartners));
+
+      } catch (syncErr) {
+        console.error("Local storage sync error:", syncErr);
       }
     } catch (err) {
       console.error("Error loading administrative data:", err);
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // ضمان إيقاف الشاشة السوداء في جميع الحالات
     }
 
+    // Load Viewer Accounts
+    if (!isViewer) {
+      try {
+        const viewersRes = await fetch("/api/admin/viewers", {
+          headers: { "Authorization": `Bearer ${adminToken}` }
+        }).catch(() => null);
+        
+        if (viewersRes && viewersRes.ok) {
+          const text = await viewersRes.text();
+          if (!text.trim().startsWith("<")) {
+            const fetchedViewers = JSON.parse(text);
+            if (Array.isArray(fetchedViewers)) {
+              setViewerAccounts(fetchedViewers);
+            }
+          }
+        }
+      } catch (viewersErr) {
+        console.error("Error loading viewer accounts:", viewersErr);
+      }
+    }
+  };
     // Load Viewer Accounts if master admin
     if (!isViewer) {
       try {
