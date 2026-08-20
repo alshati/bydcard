@@ -486,7 +486,7 @@ export default function AdminDashboard({
   // Video Preview Modal
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
 
- // Load All Dashboard Data
+// Load All Dashboard Data (النسخة الآمنة والموحدة بالكامل)
   const loadAllData = async () => {
     setIsLoading(true);
     
@@ -561,7 +561,6 @@ export default function AdminDashboard({
           safeSetLocalStorage("BYD_USERS", JSON.stringify(updatedCustomMembers));
         }
 
-        // نفس المنطق للشركاء...
         const currentLocalPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
         let updatedCustomPartners = currentLocalPartners.filter((p: any) => {
           const cn = (p.companyName || "").toLowerCase();
@@ -599,7 +598,7 @@ export default function AdminDashboard({
       setIsLoading(false); // ضمان إيقاف الشاشة السوداء في جميع الحالات
     }
 
-    // Load Viewer Accounts
+    // Load Viewer Accounts (مدمجة بشكل آمن داخل الدالة الأساسية لمنع أي تكرار)
     if (!isViewer) {
       try {
         const viewersRes = await fetch("/api/admin/viewers", {
@@ -620,176 +619,6 @@ export default function AdminDashboard({
       }
     }
   };
-    // Load Viewer Accounts if master admin
-    if (!isViewer) {
-      try {
-        const viewersRes = await fetch("/api/admin/viewers", {
-          headers: { "Authorization": `Bearer ${adminToken}` }
-        });
-        if (viewersRes.ok) {
-          const fetchedViewers = await viewersRes.json();
-          if (Array.isArray(fetchedViewers)) {
-            setViewerAccounts(fetchedViewers);
-          }
-        }
-      } catch (viewersErr) {
-        console.error("Error loading viewer accounts:", viewersErr);
-      }
-    }
-  };
-
-  const handleCreateViewerAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!viewerForm.username || !viewerForm.password) {
-      setViewerMsg({
-        type: "error",
-        text: lang === "en" ? "Username and Password are required." : "اسم المستخدم وكلمة المرور مطلوبان."
-      });
-      return;
-    }
-
-    setViewerLoading(true);
-    setViewerMsg(null);
-
-    try {
-      const res = await fetch("/api/admin/viewers", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${adminToken}`
-        },
-        body: JSON.stringify(viewerForm)
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        if (Array.isArray(data.viewers)) {
-          setViewerAccounts(data.viewers);
-        } else if (data.viewer) {
-          setViewerAccounts((prev) => [data.viewer, ...prev.filter((v) => v.id !== data.viewer.id)]);
-        }
-        setViewerForm({ username: "", password: "", name: "", notes: "" });
-        setViewerMsg({
-          type: "success",
-          text: lang === "en" ? "Monitoring account created successfully!" : "تم إنشاء حساب المراقبة بنجاح وبشكل فوري!"
-        });
-      } else {
-        setViewerMsg({
-          type: "error",
-          text: lang === "en" ? data.message : (data.messageAr || data.message)
-        });
-      }
-    } catch (err) {
-      console.error(err);
-      setViewerMsg({
-        type: "error",
-        text: lang === "en" ? "Failed to create account." : "فشل إنشاء الحساب."
-      });
-    } finally {
-      setViewerLoading(false);
-    }
-  };
-
-  const handleDeleteViewerAccount = async (id: string, username: string) => {
-    if (!window.confirm(lang === "en" ? `Are you sure you want to delete auditor account '${username}'?` : `هل أنت متأكد من حذف حساب المراقبة '${username}'؟`)) {
-      return;
-    }
-
-    // Instant optimistic removal from UI
-    const previousAccounts = [...viewerAccounts];
-    setViewerAccounts((prev) => prev.filter((v) => v.id !== id && v.username !== username));
-
-    const token = adminToken || localStorage.getItem("byd-admin-token") || "";
-
-    try {
-      const res = await fetch(`/api/admin/viewers/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        if (Array.isArray(data.viewers)) {
-          setViewerAccounts(data.viewers);
-        }
-      } else {
-        // Rollback on error
-        setViewerAccounts(previousAccounts);
-        alert(lang === "en" ? (data.message || "Failed to delete") : (data.messageAr || data.message || "فشل حذف الحساب"));
-      }
-    } catch (err) {
-      console.error(err);
-      setViewerAccounts(previousAccounts);
-      alert(lang === "en" ? "Failed to delete account." : "فشل حذف الحساب.");
-    }
-  };
-
-  const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2500);
-  };
-
-  const financialsResOrMock = async (res: Response) => {
-    try {
-      return await res.json();
-    } catch (e) {
-      return null;
-    }
-  };
-
-  useEffect(() => {
-    loadAllData();
-  }, [adminToken]);
-
-  useEffect(() => {
-    const updateLocalLists = () => {
-      const deletedPartners = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]").map((s: string) => s.toLowerCase());
-      const deletedMembers = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]").map((s: string) => s.toLowerCase());
-
-      const m1 = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
-      const m2 = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
-      const combinedMembers = [...m1];
-      m2.forEach((m: any) => {
-        if (!combinedMembers.some((existing: any) => existing.cardId === m.cardId)) {
-          combinedMembers.push(m);
-        }
-      });
-
-      const filteredMembersList = combinedMembers.filter((m: any) => {
-        const id = (m.id || "").toLowerCase();
-        const cardId = (m.cardId || "").toLowerCase();
-        return !deletedMembers.includes(id) && !deletedMembers.includes(cardId);
-      });
-
-      const p1 = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-      const p2 = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
-      const combinedPartners = [...p1];
-      p2.forEach((p: any) => {
-        if (!combinedPartners.some((existing: any) => existing.username === p.username || existing.companyName === p.companyName)) {
-          combinedPartners.push(p);
-        }
-      });
-
-      const filteredPartnersList = combinedPartners.filter((p: any) => {
-        const id = (p.id || "").toLowerCase();
-        const username = (p.username || "").toLowerCase();
-        const companyName = (p.companyName || "").toLowerCase();
-        return !deletedPartners.includes(id) && !deletedPartners.includes(username) && !deletedPartners.includes(companyName);
-      });
-
-      setLocalMembersList(filteredMembersList);
-      setLocalPartnersList(filteredPartnersList);
-    };
-
-    updateLocalLists();
-    
-    window.addEventListener("storage-sync-updated", updateLocalLists);
-    window.addEventListener("storage", updateLocalLists);
-    return () => {
-      window.removeEventListener("storage-sync-updated", updateLocalLists);
-      window.removeEventListener("storage", updateLocalLists);
-    };
-  }, []);
 
   // MEMBER CRUD ACTIONS
   const handleToggleMemberStatus = async (member: Member) => {
