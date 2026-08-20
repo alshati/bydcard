@@ -3898,218 +3898,391 @@ export default function AdminDashboard({
           </div>
         )}
 
-    {/* ----------------- SECTION 6: VIEWER / AUDITOR ACCOUNTS (MASTER ADMIN ONLY) ----------------- */}
-      {!isLoading && activeTab === "viewers" && !isViewer && (
-        <div className="space-y-8" id="viewers-management-panel">
-          
-          {/* Header info banner */}
-          <div className="bg-[#121212] border border-gray-800 p-6 sm:p-8 rounded-2xl">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-800/80 pb-6 mb-6">
-              <div>
-                <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5">
-                  <span className="w-2.5 h-6 bg-[#D30014] rounded-sm"></span>
-                  {lang === "en" ? "Auditor & Read-Only Accounts Management" : "إدارة حسابات المراقبة والتدقيق (صلاحية الاطلاع والطباعة فقط)"}
-                </h2>
-                <p className="text-xs sm:text-sm text-gray-400 mt-1 font-semibold">
-                  {lang === "en"
-                    ? "Create secure credentials for auditors, observers, or printing staff. These accounts can ONLY view data, inspect statistics, and print/export reports, but CANNOT add, modify, or delete anything."
-                    : "أنشئ حسابات مخصصة للمراقبين أو المدققين أو موظفي الطباعة. تتيح هذه الحسابات الاطلاع الكامل وطباعة التقارير والإحصائيات فقط، دون أي صلاحية للإضافة أو التعديل أو الحذف."}
-                </p>
+           {/* ----------------- SECTION 6: VIEWER / AUDITOR ACCOUNTS (MASTER ADMIN ONLY) ----------------- */}
+        {!isLoading && activeTab === "viewers" && !isViewer && (
+          <div className="space-y-8" id="viewers-management-panel">
+            
+            {/* Header info banner */}
+            <div className="bg-[#121212] border border-gray-800 p-6 sm:p-8 rounded-2xl">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-800/80 pb-6 mb-6">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5">
+                    <span className="w-2.5 h-6 bg-[#D30014] rounded-sm"></span>
+                    {lang === "en" ? "Auditor & Read-Only Accounts Management" : "إدارة حسابات المراقبة والتدقيق (صلاحية الاطلاع والطباعة فقط)"}
+                  </h2>
+                  <p className="text-xs sm:text-sm text-gray-400 mt-1 font-semibold">
+                    {lang === "en"
+                      ? "Create secure credentials for auditors, observers, or printing staff. These accounts can ONLY view data, inspect statistics, and print/export reports, but CANNOT add, modify, or delete anything."
+                      : "أنشئ حسابات مخصصة للمراقبين أو المدققين أو موظفي الطباعة. تتيح هذه الحسابات الاطلاع الكامل وطباعة التقارير والإحصائيات فقط، دون أي صلاحية للإضافة أو التعديل أو الحذف."}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 px-3.5 py-2 bg-[#D30014]/10 border border-[#D30014]/30 rounded-xl text-xs font-black text-[#D30014] shrink-0">
+                  <Shield className="w-4 h-4" />
+                  <span>{lang === "en" ? "Master Admin Only" : "إدارة المسؤول العام فقط"}</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 px-3.5 py-2 bg-[#D30014]/10 border border-[#D30014]/30 rounded-xl text-xs font-black text-[#D30014] shrink-0">
-                <Shield className="w-4 h-4" />
-                <span>{lang === "en" ? "Master Admin Only" : "إدارة المسؤول العام فقط"}</span>
-              </div>
+
+              {/* Account Creation Form */}
+              <form onSubmit={handleCreateViewerAccount} className="space-y-4">
+                <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-[#D30014]" />
+                  <span>{lang === "en" ? "Create New Auditor Account" : "إنشاء حساب مراقب / مدقق جديد"}</span>
+                </h3>
+
+                {viewerMsg && (
+                  <div className={`p-4 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-3 border ${
+                    viewerMsg.type === "success" 
+                      ? "bg-green-500/10 border-green-500/30 text-green-400" 
+                      : "bg-red-500/10 border-red-500/30 text-red-400"
+                  }`}>
+                    {viewerMsg.type === "success" ? <CheckCircle className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
+                    <span>{viewerMsg.text}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-gray-400 font-bold mb-1.5 text-xs">
+                      {lang === "en" ? "Username" : "اسم المستخدم (User)"} *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. auditor1"
+                      value={viewerForm.username}
+                      onChange={(e) => setViewerForm({ ...viewerForm, username: e.target.value })}
+                      className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014] text-xs sm:text-sm font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-gray-400 font-bold mb-1.5 text-xs">
+                      {lang === "en" ? "Password" : "كلمة المرور (Password)"} *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Pass@12345"
+                      value={viewerForm.password}
+                      onChange={(e) => setViewerForm({ ...viewerForm, password: e.target.value })}
+                      className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014] text-xs sm:text-sm font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-gray-400 font-bold mb-1.5 text-xs">
+                      {lang === "en" ? "Auditor / Observer Name" : "اسم المراقب أو الجهة"}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Financial Audit Dept"
+                      value={viewerForm.name}
+                      onChange={(e) => setViewerForm({ ...viewerForm, name: e.target.value })}
+                      className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014] text-xs sm:text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-gray-400 font-bold mb-1.5 text-xs">
+                      {lang === "en" ? "Notes / Department" : "ملاحظات أو القسم"}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Baghdad Regional Office"
+                      value={viewerForm.notes}
+                      onChange={(e) => setViewerForm({ ...viewerForm, notes: e.target.value })}
+                      className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014] text-xs sm:text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    disabled={viewerLoading}
+                    className="flex items-center gap-2 px-6 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white text-xs sm:text-sm font-extrabold rounded-lg shadow-lg shadow-[#D30014]/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>{viewerLoading ? (lang === "en" ? "Creating..." : "جاري الإنشاء...") : (lang === "en" ? "Create Account" : "إنشاء الحساب")}</span>
+                  </button>
+                </div>
+              </form>
             </div>
 
-            {/* Account Creation Form */}
-            <form onSubmit={handleCreateViewerAccount} className="space-y-4">
-              <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
-                <UserCheck className="w-4 h-4 text-[#D30014]" />
-                <span>{lang === "en" ? "Create New Auditor Account" : "إنشاء حساب مراقب / مدقق جديد"}</span>
-              </h3>
+            {/* List of active auditor accounts */}
+            <div className="bg-[#121212] border border-gray-800 rounded-2xl overflow-hidden shadow-xl">
+              <div className="p-5 border-b border-gray-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-[#0d0d0d]">
+                <div className="flex items-center gap-2">
+                  <Eye className="w-5 h-5 text-[#D30014]" />
+                  <h3 className="text-base font-black text-white">
+                    {lang === "en" ? "Active Auditor & Monitoring Accounts" : "حسابات المراقبة والتدقيق الفعالة"}
+                  </h3>
+                </div>
+                <span className="text-xs font-mono text-gray-400 bg-black/60 px-3 py-1 rounded-full border border-gray-800">
+                  {viewerAccounts.length} {lang === "en" ? "Active Accounts" : "حسابات مسجلة"}
+                </span>
+              </div>
 
-              {viewerMsg && (
-                <div className={`p-4 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-3 border ${
-                  viewerMsg.type === "success" 
-                    ? "bg-green-500/10 border-green-500/30 text-green-400" 
-                    : "bg-red-500/10 border-red-500/30 text-red-400"
-                }`}>
-                  {viewerMsg.type === "success" ? <CheckCircle className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
-                  <span>{viewerMsg.text}</span>
+              {viewerAccounts.length === 0 ? (
+                <div className="py-16 text-center text-gray-500">
+                  <Eye className="w-10 h-10 text-gray-700 mx-auto mb-3" />
+                  <p className="font-bold text-sm">{lang === "en" ? "No auditor accounts created yet." : "لم يتم إنشاء أي حسابات مراقبة حتى الآن."}</p>
+                  <p className="text-xs text-gray-600 mt-1">{lang === "en" ? "Use the form above to add view-only accounts." : "استخدم النموذج أعلاه لإضافة حسابات بصلاحيات المشاهدة والطباعة فقط."}</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wider font-bold">
+                        <th className="py-4 px-6">{lang === "en" ? "Username" : "اسم المستخدم"}</th>
+                        <th className="py-4 px-6">{lang === "en" ? "Password" : "كلمة المرور"}</th>
+                        <th className="py-4 px-6">{lang === "en" ? "Name / Officer" : "الاسم / المراقب"}</th>
+                        <th className="py-4 px-6">{lang === "en" ? "Notes" : "الملاحظات"}</th>
+                        <th className="py-4 px-6">{lang === "en" ? "Role & Permissions" : "الصلاحية"}</th>
+                        <th className="py-4 px-6">{lang === "en" ? "Created Date" : "تاريخ الإنشاء"}</th>
+                        <th className="py-4 px-6 text-right">{lang === "en" ? "Actions" : "الإجراءات"}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-900 text-xs sm:text-sm font-semibold text-gray-300">
+                      {viewerAccounts.map((account) => (
+                        <tr key={account.id} className="hover:bg-white/[0.01] transition-colors">
+                          <td className="py-4 px-6 font-mono font-black text-white">
+                            <div className="flex items-center gap-2">
+                              <span>{account.username}</span>
+                              <button
+                                onClick={() => copyToClipboard(account.username, `u-${account.id}`)}
+                                className="p-1 text-gray-500 hover:text-white transition-colors cursor-pointer"
+                                title="Copy username"
+                              >
+                                {copiedId === `u-${account.id}` ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                          </td>
+
+                          <td className="py-4 px-6 font-mono text-gray-300">
+                            <div className="flex items-center gap-2">
+                              <span className="bg-black/60 px-2 py-0.5 rounded border border-gray-800 text-amber-300">
+                                {account.password}
+                              </span>
+                              <button
+                                onClick={() => copyToClipboard(account.password, `p-${account.id}`)}
+                                className="p-1 text-gray-500 hover:text-white transition-colors cursor-pointer"
+                                title="Copy password"
+                              >
+                                {copiedId === `p-${account.id}` ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                          </td>
+
+                          <td className="py-4 px-6 font-bold text-white">
+                            {account.name || "—"}
+                          </td>
+
+                          <td className="py-4 px-6 text-gray-400 text-xs">
+                            {account.notes || "—"}
+                          </td>
+
+                          <td className="py-4 px-6">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>{lang === "en" ? "Read & Print Only" : "اطلاع وطباعة فقط"}</span>
+                            </span>
+                          </td>
+
+                          <td className="py-4 px-6 font-mono text-xs text-gray-500">
+                            {account.createdAt}
+                          </td>
+
+                          <td className="py-4 px-6 text-right">
+                            <button
+                              onClick={() => handleDeleteViewerAccount(account.id, account.username)}
+                              className="p-2 bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/20 rounded-lg text-red-500 transition-colors cursor-pointer"
+                              title={lang === "en" ? "Delete Account" : "حذف الحساب"}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          </div>
+        )}
+
+      </div>
+
+      {/* ----------------- MODAL MODAL: MEMBER CRUD FORM ----------------- */}
+      {showMemberForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+          <div className="bg-[#121212] border border-gray-800 rounded-2xl w-full max-w-lg p-6 sm:p-8 relative max-h-[90vh] overflow-y-auto shadow-2xl">
+            <h3 className="text-xl font-black mb-6 flex items-center gap-2">
+              <span className="w-2.5 h-5 bg-[#D30014] rounded-sm"></span>
+              {editingMember ? "Edit B2C Member Details" : "Create New B2C Member Card"}
+            </h3>
+
+            <form onSubmit={handleSaveMember} className="space-y-4 text-xs sm:text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-gray-400 font-bold mb-1.5 text-xs">
-                    {lang === "en" ? "Username" : "اسم المستخدم (User)"} *
-                  </label>
+                  <label className="block text-gray-400 font-bold mb-1.5">{t.mFullNameEn} *</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. auditor1"
-                    value={viewerForm.username}
-                    onChange={(e) => setViewerForm({ ...viewerForm, username: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014] text-xs sm:text-sm font-mono"
+                    value={memberForm.fullName}
+                    onChange={(e) => setMemberForm({ ...memberForm, fullName: e.target.value })}
+                    placeholder="Ahmed Ali Al-Rubaie"
+                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-gray-400 font-bold mb-1.5 text-xs">
-                    {lang === "en" ? "Password" : "كلمة المرور (Password)"} *
-                  </label>
+                  <label className="block text-gray-400 font-bold mb-1.5">{t.mFullNameAr} *</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Pass@12345"
-                    value={viewerForm.password}
-                    onChange={(e) => setViewerForm({ ...viewerForm, password: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014] text-xs sm:text-sm font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-gray-400 font-bold mb-1.5 text-xs">
-                    {lang === "en" ? "Auditor / Observer Name" : "اسم المراقب أو الجهة"}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Financial Audit Dept"
-                    value={viewerForm.name}
-                    onChange={(e) => setViewerForm({ ...viewerForm, name: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014] text-xs sm:text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-gray-400 font-bold mb-1.5 text-xs">
-                    {lang === "en" ? "Notes / Department" : "ملاحظات أو القسم"}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Baghdad Regional Office"
-                    value={viewerForm.notes}
-                    onChange={(e) => setViewerForm({ ...viewerForm, notes: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014] text-xs sm:text-sm"
+                    value={memberForm.fullNameAr}
+                    onChange={(e) => setMemberForm({ ...memberForm, fullNameAr: e.target.value })}
+                    placeholder="أحمد علي الربيعي"
+                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end pt-2">
+              <div>
+                <label className="block text-gray-400 font-bold mb-1.5">{t.mCardId} *</label>
+                <input
+                  type="text"
+                  required
+                  value={memberForm.cardId}
+                  onChange={(e) => setMemberForm({ ...memberForm, cardId: e.target.value })}
+                  placeholder="BYD-2026-XXX"
+                  className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-mono font-bold outline-none focus:border-[#D30014]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-400 font-bold mb-1.5">{t.mProvince} *</label>
+                  <select
+                    value={memberForm.province}
+                    onChange={(e) => setMemberForm({ ...memberForm, province: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
+                  >
+                    {provincesList.map((p, idx) => (
+                      <option key={idx} value={p.en}>{p.en}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-gray-400 font-bold mb-1.5">{t.mStatus} *</label>
+                  <select
+                    value={memberForm.status}
+                    onChange={(e) => setMemberForm({ ...memberForm, status: e.target.value as "Active" | "Inactive" })}
+                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
+                  >
+                    <option value="Active">{t.active}</option>
+                    <option value="Inactive">{t.inactive}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-gray-400 font-bold mb-1.5">{lang === "en" ? "Subscription Duration" : "مدة الاشتراك"} *</label>
+                <select
+                  value={memberForm.durationMonths}
+                  onChange={(e) => {
+                    const months = Number(e.target.value);
+                    const newFee = months === 12 ? 50000 : 25000;
+                    const regDate = memberForm.registrationDate || new Date().toISOString().split("T")[0];
+                    const regTime = new Date(regDate).getTime();
+                    const expTime = regTime + (months === 12 ? 365 : 180) * 24 * 60 * 60 * 1000;
+                    const newExpDate = new Date(expTime).toISOString().split("T")[0];
+
+                    setMemberForm({
+                      ...memberForm,
+                      durationMonths: months,
+                      feePaidIqd: newFee,
+                      feePaidUsd: Math.round(newFee / 1500),
+                      expiryDate: newExpDate
+                    });
+                  }}
+                  className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
+                >
+                  <option value={6}>{lang === "en" ? "6 Months - 25,000 IQD (6 أشهر من تاريخ التسجيل)" : "6 أشهر من تاريخ التسجيل - 25,000 د.ع"}</option>
+                  <option value={12}>{lang === "en" ? "1 Year - 50,000 IQD (سنة واحدة من تاريخ التسجيل)" : "سنة واحدة من تاريخ التسجيل - 50,000 د.ع"}</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-gray-400 font-bold mb-1.5">{lang === "en" ? "Nearest Landmark" : "أقرب نقطة دالة"}</label>
+                <input
+                  type="text"
+                  value={memberForm.nearestLandmark || ""}
+                  onChange={(e) => setMemberForm({ ...memberForm, nearestLandmark: e.target.value })}
+                  placeholder={lang === "en" ? "e.g. Near Dijlah Mall" : "مثال: قرب دجلة مول"}
+                  className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-bold outline-none focus:border-[#D30014]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-gray-400 font-bold mb-1.5">{t.mFeesPaidIqd} *</label>
+                  <input
+                    type="number"
+                    required
+                    value={memberForm.feePaidIqd}
+                    onChange={(e) => setMemberForm({ 
+                      ...memberForm, 
+                      feePaidIqd: Number(e.target.value),
+                      feePaidUsd: Math.round(Number(e.target.value) / 1500)
+                    })}
+                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-mono font-bold outline-none focus:border-[#D30014]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-400 font-bold mb-1.5">{lang === "en" ? "Issue Date" : "تاريخ الإصدار"} *</label>
+                  <input
+                    type="date"
+                    required
+                    value={memberForm.registrationDate}
+                    onChange={(e) => setMemberForm({ ...memberForm, registrationDate: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-mono font-bold outline-none focus:border-[#D30014]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-400 font-bold mb-1.5">{lang === "en" ? "Expiry Date" : "تاريخ الانتهاء"} *</label>
+                  <input
+                    type="date"
+                    required
+                    value={memberForm.expiryDate}
+                    onChange={(e) => setMemberForm({ ...memberForm, expiryDate: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-black border border-gray-800 rounded-lg text-white font-mono font-bold outline-none focus:border-[#D30014]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowMemberForm(false)}
+                  className="px-5 py-2.5 bg-[#121212] hover:bg-gray-950 border border-gray-800 text-gray-300 font-bold rounded-lg transition-colors"
+                >
+                  {t.cancel}
+                </button>
                 <button
                   type="submit"
-                  disabled={viewerLoading}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white text-xs sm:text-sm font-extrabold rounded-lg shadow-lg shadow-[#D30014]/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                  className="px-5 py-2.5 bg-[#D30014] hover:bg-[#b00010] text-white font-bold rounded-lg transition-all"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>{viewerLoading ? (lang === "en" ? "Creating..." : "جاري الإنشاء...") : (lang === "en" ? "Create Account" : "إنشاء الحساب")}</span>
+                  {t.save}
                 </button>
               </div>
             </form>
           </div>
-
-          {/* List of active auditor accounts */}
-          <div className="bg-[#121212] border border-gray-800 rounded-2xl overflow-hidden shadow-xl">
-            <div className="p-5 border-b border-gray-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-[#0d0d0d]">
-              <div className="flex items-center gap-2">
-                <Eye className="w-5 h-5 text-[#D30014]" />
-                <h3 className="text-base font-black text-white">
-                  {lang === "en" ? "Active Auditor & Monitoring Accounts" : "حسابات المراقبة والتدقيق الفعالة"}
-                </h3>
-              </div>
-              <span className="text-xs font-mono text-gray-400 bg-black/60 px-3 py-1 rounded-full border border-gray-800">
-                {Array.isArray(viewerAccounts) ? viewerAccounts.length : 0} {lang === "en" ? "Active Accounts" : "حسابات مسجلة"}
-              </span>
-            </div>
-
-            {!Array.isArray(viewerAccounts) || viewerAccounts.length === 0 ? (
-              <div className="py-16 text-center text-gray-500">
-                <Eye className="w-10 h-10 text-gray-700 mx-auto mb-3" />
-                <p className="font-bold text-sm">{lang === "en" ? "No auditor accounts created yet." : "لم يتم إنشاء أي حسابات مراقبة حتى الآن."}</p>
-                <p className="text-xs text-gray-600 mt-1">{lang === "en" ? "Use the form above to add view-only accounts." : "استخدم النموذج أعلاه لإضافة حسابات بصلاحيات المشاهدة والطباعة فقط."}</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase tracking-wider font-bold">
-                      <th className="py-4 px-6">{lang === "en" ? "Username" : "اسم المستخدم"}</th>
-                      <th className="py-4 px-6">{lang === "en" ? "Password" : "كلمة المرور"}</th>
-                      <th className="py-4 px-6">{lang === "en" ? "Name / Officer" : "الاسم / المراقب"}</th>
-                      <th className="py-4 px-6">{lang === "en" ? "Notes" : "الملاحظات"}</th>
-                      <th className="py-4 px-6">{lang === "en" ? "Role & Permissions" : "الصلاحية"}</th>
-                      <th className="py-4 px-6">{lang === "en" ? "Created Date" : "تاريخ الإنشاء"}</th>
-                      <th className="py-4 px-6 text-right">{lang === "en" ? "Actions" : "الإجراءات"}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-900 text-xs sm:text-sm font-semibold text-gray-300">
-                    {viewerAccounts.map((account) => (
-                      <tr key={account.id} className="hover:bg-white/[0.01] transition-colors">
-                        <td className="py-4 px-6 font-mono font-black text-white">
-                          <div className="flex items-center gap-2">
-                            <span>{account.username}</span>
-                            <button
-                              onClick={() => copyToClipboard(account.username, `u-${account.id}`)}
-                              className="p-1 text-gray-500 hover:text-white transition-colors cursor-pointer"
-                              title="Copy username"
-                            >
-                              {copiedId === `u-${account.id}` ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
-                        </td>
-
-                        <td className="py-4 px-6 font-mono text-gray-300">
-                          <div className="flex items-center gap-2">
-                            <span className="bg-black/60 px-2 py-0.5 rounded border border-gray-800 text-amber-300">
-                              {account.password}
-                            </span>
-                            <button
-                              onClick={() => copyToClipboard(account.password, `p-${account.id}`)}
-                              className="p-1 text-gray-500 hover:text-white transition-colors cursor-pointer"
-                              title="Copy password"
-                            >
-                              {copiedId === `p-${account.id}` ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
-                        </td>
-
-                        <td className="py-4 px-6 font-bold text-white">
-                          {account.name || "—"}
-                        </td>
-
-                        <td className="py-4 px-6 text-gray-400 text-xs">
-                          {account.notes || "—"}
-                        </td>
-
-                        <td className="py-4 px-6">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                            <Eye className="w-3.5 h-3.5" />
-                            <span>{lang === "en" ? "Read & Print Only" : "اطلاع وطباعة فقط"}</span>
-                          </span>
-                        </td>
-
-                        <td className="py-4 px-6 font-mono text-xs text-gray-500">
-                          {account.createdAt || "—"}
-                        </td>
-
-                        <td className="py-4 px-6 text-right">
-                          <button
-                            onClick={() => handleDeleteViewerAccount(account.id, account.username)}
-                            className="p-2 bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/20 rounded-lg text-red-500 transition-colors cursor-pointer"
-                            title={lang === "en" ? "Delete Account" : "حذف الحساب"}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
         </div>
       )}
 
@@ -4503,12 +4676,14 @@ export default function AdminDashboard({
                 </span>
 
                 <div className="relative w-full aspect-[1.58/1] rounded-2xl bg-gradient-to-br from-[#D30014] to-[#a00010] text-white p-5 shadow-2xl overflow-hidden border border-white/15 select-none">
+                  {/* Card Skyline Silhouette Background */}
                   <div className="absolute bottom-0 left-0 right-0 h-12 bg-black opacity-95 flex items-end">
                     <svg className="w-full h-full text-white fill-current" viewBox="0 0 300 60" preserveAspectRatio="none">
                       <path d="M0,60 L300,60 L300,45 L290,45 L285,35 L280,45 L260,45 L255,10 L250,10 L248,20 L240,20 L235,45 L215,45 L210,30 L205,45 L180,45 L175,25 L160,25 L155,45 L140,45 C140,30 120,30 120,45 L105,45 L100,5 L95,5 L90,20 L80,20 L75,45 L50,45 L45,15 L40,15 L35,45 L20,45 L15,35 L10,45 Z" />
                     </svg>
                   </div>
 
+                  {/* BYD branding */}
                   <div className="flex justify-between items-start">
                     <div>
                       <h4 className="text-xl font-black tracking-tighter leading-none">BYD <span className="text-xs font-serif italic text-white/80">Card</span></h4>
@@ -4519,6 +4694,7 @@ export default function AdminDashboard({
                     </div>
                   </div>
 
+                  {/* Middle area with bounded user details */}
                   <div className="mt-4 relative z-10">
                     {cardForm.memberId ? (
                       (() => {
@@ -4550,6 +4726,7 @@ export default function AdminDashboard({
                     )}
                   </div>
 
+                  {/* Bottom bar code area */}
                   <div className="absolute bottom-10 left-5 flex gap-[1.5px] h-6 items-end relative z-10 bg-black/30 p-1 rounded">
                     <div className="w-[1.5px] h-full bg-white"></div>
                     <div className="w-[3px] h-full bg-white"></div>
@@ -4561,6 +4738,7 @@ export default function AdminDashboard({
                     <div className="w-[4px] h-full bg-white"></div>
                   </div>
 
+                  {/* Status Overlay Ring inside live card */}
                   {cardForm.status === "Inactive" && (
                     <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center text-center p-4">
                       <span className="text-red-500 font-extrabold text-sm uppercase tracking-widest">{lang === "en" ? "DEACTIVATED CARD" : "بطاقة معطلة وغير فعالة"}</span>
@@ -4576,8 +4754,7 @@ export default function AdminDashboard({
           </div>
         </div>
       )}
+
     </div>
   );
 }
-    
-
