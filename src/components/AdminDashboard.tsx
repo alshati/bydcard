@@ -62,6 +62,19 @@ import { Member, Partner, FinancialStats, Language, Branding, ViewerAccount } fr
 import { safeSetLocalStorage } from "../lib/storage";
 import systemLogo from "../assets/images/byd_card_logo_exact_1784543953366.jpg";
 
+// دالة مساعدة عامة وآمنة جداً لأي طلب API في الملف لمنع أخطاء HTML/JSON تماماً
+const safeFetchJson = async (url: string, options?: RequestInit) => {
+  try {
+    const res = await fetch(url, options);
+    if (!res || !res.ok) return null;
+    const text = await res.text();
+    if (text.trim().startsWith("<")) return null; // إذا أرجع السيرفر HTML يتم تجاهله بأمان
+    return JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+};
+
 interface AdminDashboardProps {
   lang: Language;
   setLang: (lang: Language) => void;
@@ -486,140 +499,129 @@ export default function AdminDashboard({
   // Video Preview Modal
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
 
-// Load All Dashboard Data
+// Load All Dashboard Data (النسخة النهائية الآمنة 100%)
   const loadAllData = async () => {
     setIsLoading(true);
     try {
-      // دالة مساعدة آمنة لقراءة الـ JSON فقط إذا لم تكن الاستجابة صفحة HTML
-      const parseResponse = async (res: Response | null) => {
-        if (!res || !res.ok) return null;
-        try {
-          const text = await res.text();
-          if (text.trim().startsWith("<")) return null; // إذا كانت صفحة HTML تخطاها
-          return JSON.parse(text);
-        } catch (e) {
-          return null;
-        }
-      };
-
-      const [membersRes, partnersRes, finRes, cardsRes] = await Promise.all([
-        fetch("/api/members").catch(() => null),
-        fetch("/api/partners").catch(() => null),
-        fetch("/api/financials").catch(() => null),
-        fetch("/api/cards").catch(() => null)
+      const [fetchedMembers, fetchedPartners, fetchedFin, fetchedCards] = await Promise.all([
+        safeFetchJson("/api/members"),
+        safeFetchJson("/api/partners"),
+        safeFetchJson("/api/financials"),
+        safeFetchJson("/api/cards")
       ]);
 
-      const fetchedMembers = await parseResponse(membersRes);
-      const fetchedPartners = await parseResponse(partnersRes);
-      const fetchedFin = await parseResponse(finRes);
-      const fetchedCards = await parseResponse(cardsRes);
+      const membersData = Array.isArray(fetchedMembers) ? fetchedMembers : [];
+      const partnersData = Array.isArray(fetchedPartners) ? fetchedPartners : [];
+      
+      setMembers(membersData);
+      setPartners(partnersData);
+      setFinancials(fetchedFin || {
+        totalRevenueIqd: 0,
+        totalRevenueUsd: 0,
+        monthlyTrend: [
+          { month: "01/2026", b2b: 0, b2c: 0, b2bTarget: 28500000, b2cTarget: 95000000 },
+          { month: "Current (Live)", b2b: 0, b2c: 0, b2bTarget: 28500000, b2cTarget: 95000000 }
+        ]
+      });
 
-      if (fetchedMembers || fetchedPartners || fetchedFin) {
-        const membersData = Array.isArray(fetchedMembers) ? fetchedMembers : [];
-        const partnersData = Array.isArray(fetchedPartners) ? fetchedPartners : [];
-        
-        setMembers(membersData);
-        setPartners(partnersData);
-        setFinancials(fetchedFin || (finRes ? await financialsResOrMock(finRes) : null));
-        if (fetchedCards && Array.isArray(fetchedCards)) {
-          setCards(fetchedCards);
+      if (Array.isArray(fetchedCards)) {
+        setCards(fetchedCards);
+      }
+
+      // Bidirectional sync: make sure any server members/partners are in local storage so metrics are perfectly consistent!
+      try {
+        const deletedPartners = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]").map((s: string) => s.toLowerCase());
+        const deletedMembers = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]").map((s: string) => s.toLowerCase());
+
+        const currentLocalMembers = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
+        const currentBydUsers = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
+        let updatedCustomMembers = currentLocalMembers.filter((m: any) => {
+          const cardId = (m.cardId || "").toLowerCase();
+          const id = (m.id || "").toLowerCase();
+          return !deletedMembers.includes(cardId) && !deletedMembers.includes(id);
+        });
+        let updatedBydUsers = currentBydUsers.filter((m: any) => {
+          const cardId = (m.cardId || "").toLowerCase();
+          const id = (m.id || "").toLowerCase();
+          return !deletedMembers.includes(cardId) && !deletedMembers.includes(id);
+        });
+        let localMembersChanged = false;
+
+        membersData.forEach((sm: any) => {
+          const smId = (sm.id || "").toLowerCase();
+          const smCardId = (sm.cardId || "").toLowerCase();
+          if (deletedMembers.includes(smId) || deletedMembers.includes(smCardId)) return;
+
+          const inCustom = updatedCustomMembers.some((lm: any) => (sm.cardId && lm.cardId && sm.cardId === lm.cardId) || (sm.id && lm.id && sm.id === lm.id));
+          if (!inCustom) {
+            updatedCustomMembers.push(sm);
+            localMembersChanged = true;
+          }
+          const inByd = updatedBydUsers.some((lm: any) => (sm.cardId && lm.cardId && sm.cardId === lm.cardId) || (sm.id && lm.id && sm.id === lm.id));
+          if (!inByd) {
+            updatedBydUsers.push(sm);
+            localMembersChanged = true;
+          }
+        });
+
+        if (localMembersChanged) {
+          safeSetLocalStorage("byd-custom-members", JSON.stringify(updatedCustomMembers));
+          safeSetLocalStorage("BYD_USERS", JSON.stringify(updatedBydUsers));
         }
 
-        // Bidirectional sync: make sure any server members/partners are in local storage so metrics are perfectly consistent!
-        try {
-          const deletedPartners = JSON.parse(localStorage.getItem("BYD_DELETED_PARTNERS") || "[]").map((s: string) => s.toLowerCase());
-          const deletedMembers = JSON.parse(localStorage.getItem("BYD_DELETED_MEMBERS") || "[]").map((s: string) => s.toLowerCase());
+        const currentLocalPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
+        const currentBydCompanies = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
+        let updatedCustomPartners = currentLocalPartners.filter((p: any) => {
+          const cn = (p.companyName || "").toLowerCase();
+          const un = (p.username || "").toLowerCase();
+          const id = (p.id || "").toLowerCase();
+          return !deletedPartners.includes(cn) && !deletedPartners.includes(un) && !deletedPartners.includes(id);
+        });
+        let updatedBydCompanies = currentBydCompanies.filter((p: any) => {
+          const cn = (p.companyName || "").toLowerCase();
+          const un = (p.username || "").toLowerCase();
+          const id = (p.id || "").toLowerCase();
+          return !deletedPartners.includes(cn) && !deletedPartners.includes(un) && !deletedPartners.includes(id);
+        });
+        let localPartnersChanged = false;
 
-          const currentLocalMembers = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
-          const currentBydUsers = JSON.parse(localStorage.getItem("BYD_USERS") || "[]");
-          let updatedCustomMembers = currentLocalMembers.filter((m: any) => {
-            const cardId = (m.cardId || "").toLowerCase();
-            const id = (m.id || "").toLowerCase();
-            return !deletedMembers.includes(cardId) && !deletedMembers.includes(id);
-          });
-          let updatedBydUsers = currentBydUsers.filter((m: any) => {
-            const cardId = (m.cardId || "").toLowerCase();
-            const id = (m.id || "").toLowerCase();
-            return !deletedMembers.includes(cardId) && !deletedMembers.includes(id);
-          });
-          let localMembersChanged = false;
+        partnersData.forEach((sp: any) => {
+          const spCn = (sp.companyName || "").toLowerCase();
+          const spUn = (sp.username || "").toLowerCase();
+          const spId = (sp.id || "").toLowerCase();
+          if (deletedPartners.includes(spCn) || deletedPartners.includes(spUn) || deletedPartners.includes(spId)) return;
 
-          membersData.forEach((sm: any) => {
-            const smId = (sm.id || "").toLowerCase();
-            const smCardId = (sm.cardId || "").toLowerCase();
-            if (deletedMembers.includes(smId) || deletedMembers.includes(smCardId)) return;
-
-            const inCustom = updatedCustomMembers.some((lm: any) => (sm.cardId && lm.cardId && sm.cardId === lm.cardId) || (sm.id && lm.id && sm.id === lm.id));
-            if (!inCustom) {
-              updatedCustomMembers.push(sm);
-              localMembersChanged = true;
-            }
-            const inByd = updatedBydUsers.some((lm: any) => (sm.cardId && lm.cardId && sm.cardId === lm.cardId) || (sm.id && lm.id && sm.id === lm.id));
-            if (!inByd) {
-              updatedBydUsers.push(sm);
-              localMembersChanged = true;
-            }
-          });
-
-          if (localMembersChanged) {
-            safeSetLocalStorage("byd-custom-members", JSON.stringify(updatedCustomMembers));
-            safeSetLocalStorage("BYD_USERS", JSON.stringify(updatedBydUsers));
+          const inCustom = updatedCustomPartners.some((lp: any) => 
+            (sp.username && lp.username && sp.username.toLowerCase() === lp.username.toLowerCase()) || 
+            (sp.companyName && lp.companyName && sp.companyName.toLowerCase() === lp.companyName.toLowerCase()) ||
+            (sp.id && lp.id && sp.id === lp.id)
+          );
+          if (!inCustom) {
+            updatedCustomPartners.push(sp);
+            localPartnersChanged = true;
           }
-
-          const currentLocalPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-          const currentBydCompanies = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
-          let updatedCustomPartners = currentLocalPartners.filter((p: any) => {
-            const cn = (p.companyName || "").toLowerCase();
-            const un = (p.username || "").toLowerCase();
-            const id = (p.id || "").toLowerCase();
-            return !deletedPartners.includes(cn) && !deletedPartners.includes(un) && !deletedPartners.includes(id);
-          });
-          let updatedBydCompanies = currentBydCompanies.filter((p: any) => {
-            const cn = (p.companyName || "").toLowerCase();
-            const un = (p.username || "").toLowerCase();
-            const id = (p.id || "").toLowerCase();
-            return !deletedPartners.includes(cn) && !deletedPartners.includes(un) && !deletedPartners.includes(id);
-          });
-          let localPartnersChanged = false;
-
-          partnersData.forEach((sp: any) => {
-            const spCn = (sp.companyName || "").toLowerCase();
-            const spUn = (sp.username || "").toLowerCase();
-            const spId = (sp.id || "").toLowerCase();
-            if (deletedPartners.includes(spCn) || deletedPartners.includes(spUn) || deletedPartners.includes(spId)) return;
-
-            const inCustom = updatedCustomPartners.some((lp: any) => 
-              (sp.username && lp.username && sp.username.toLowerCase() === lp.username.toLowerCase()) || 
-              (sp.companyName && lp.companyName && sp.companyName.toLowerCase() === lp.companyName.toLowerCase()) ||
-              (sp.id && lp.id && sp.id === lp.id)
-            );
-            if (!inCustom) {
-              updatedCustomPartners.push(sp);
-              localPartnersChanged = true;
-            }
-            const inByd = updatedBydCompanies.some((lp: any) => 
-              (sp.username && lp.username && sp.username.toLowerCase() === lp.username.toLowerCase()) || 
-              (sp.companyName && lp.companyName && sp.companyName.toLowerCase() === lp.companyName.toLowerCase()) ||
-              (sp.id && lp.id && sp.id === lp.id)
-            );
-            if (!inByd) {
-              updatedBydCompanies.push(sp);
-              localPartnersChanged = true;
-            }
-          });
-
-          if (localPartnersChanged) {
-            safeSetLocalStorage("byd-custom-partners", JSON.stringify(updatedCustomPartners));
-            safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(updatedBydCompanies));
+          const inByd = updatedBydCompanies.some((lp: any) => 
+            (sp.username && lp.username && sp.username.toLowerCase() === lp.username.toLowerCase()) || 
+            (sp.companyName && lp.companyName && sp.companyName.toLowerCase() === lp.companyName.toLowerCase()) ||
+            (sp.id && lp.id && sp.id === lp.id)
+          );
+          if (!inByd) {
+            updatedBydCompanies.push(sp);
+            localPartnersChanged = true;
           }
+        });
 
-          if (localMembersChanged || localPartnersChanged) {
-            window.dispatchEvent(new Event("storage-sync-updated"));
-            window.dispatchEvent(new Event("storage"));
-          }
-        } catch (syncErr) {
-          console.error("Local storage sync error inside AdminDashboard:", syncErr);
+        if (localPartnersChanged) {
+          safeSetLocalStorage("byd-custom-partners", JSON.stringify(updatedCustomPartners));
+          safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(updatedBydCompanies));
         }
+
+        if (localMembersChanged || localPartnersChanged) {
+          window.dispatchEvent(new Event("storage-sync-updated"));
+          window.dispatchEvent(new Event("storage"));
+        }
+      } catch (syncErr) {
+        console.error("Local storage sync error inside AdminDashboard:", syncErr);
       }
     } catch (err) {
       console.error("Error loading administrative data:", err);
@@ -630,17 +632,11 @@ export default function AdminDashboard({
     // Load Viewer Accounts if master admin
     if (!isViewer) {
       try {
-        const viewersRes = await fetch("/api/admin/viewers", {
+        const fetchedViewers = await safeFetchJson("/api/admin/viewers", {
           headers: { "Authorization": `Bearer ${adminToken}` }
         });
-        if (viewersRes.ok) {
-          const text = await viewersRes.text();
-          if (!text.trim().startsWith("<")) {
-            const fetchedViewers = JSON.parse(text);
-            if (Array.isArray(fetchedViewers)) {
-              setViewerAccounts(fetchedViewers);
-            }
-          }
+        if (Array.isArray(fetchedViewers)) {
+          setViewerAccounts(fetchedViewers);
         }
       } catch (viewersErr) {
         console.error("Error loading viewer accounts:", viewersErr);
