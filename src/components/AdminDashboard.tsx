@@ -567,7 +567,7 @@ export default function AdminDashboard({
       setIsLoading(false);
     }
 
-    // Load Viewer Accounts if master admin (تم إرجاع الكود كاملاً هنا)
+   // Load Viewer Accounts with LocalStorage fallback & merge
     if (!isViewer) {
       try {
         const viewersRes = await fetch("/api/admin/viewers", {
@@ -575,17 +575,25 @@ export default function AdminDashboard({
         }).catch(() => null);
 
         const fetchedViewers = await parseJSON(viewersRes);
-        if (Array.isArray(fetchedViewers)) {
-          setViewerAccounts(fetchedViewers);
-        } else {
-          setViewerAccounts([]);
-        }
+        const serverList = Array.isArray(fetchedViewers) ? fetchedViewers : [];
+        const localList = JSON.parse(localStorage.getItem("BYD_VIEWER_ACCOUNTS") || "[]");
+
+        // دمج القائمتين معاً بدون تكرار
+        const combined = [...localList];
+        serverList.forEach((sItem: any) => {
+          if (!combined.some((c: any) => c.username === sItem.username)) {
+            combined.push(sItem);
+          }
+        });
+
+        setViewerAccounts(combined);
+        localStorage.setItem("BYD_VIEWER_ACCOUNTS", JSON.stringify(combined));
       } catch (viewersErr) {
         console.error("Error loading viewer accounts:", viewersErr);
-        setViewerAccounts([]);
+        const localList = JSON.parse(localStorage.getItem("BYD_VIEWER_ACCOUNTS") || "[]");
+        setViewerAccounts(localList);
       }
     }
-  };
 
 const handleCreateViewerAccount = (e: React.FormEvent) => {
     e.preventDefault();
