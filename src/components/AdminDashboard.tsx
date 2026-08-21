@@ -1656,7 +1656,7 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
             feePaidIqd: (data.partner || body).feePaidIqd !== undefined ? (data.partner || body).feePaidIqd : 150000
           };
 
-          // Update byd-custom-partners
+          // Update byd-custom-partners (الطريقة الأصلية البسيطة والآمنة)
           const current = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
           const isMatchPartner = (p: any) => {
             if (editingPartner) {
@@ -1674,7 +1674,7 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
           if (idx > -1) {
             current[idx] = registered;
           } else {
-            current.unshift(registered);
+            current.push(registered);
           }
           safeSetLocalStorage("byd-custom-partners", JSON.stringify(current));
 
@@ -1687,15 +1687,6 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
             companiesArray.push(registered);
           }
           safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(companiesArray));
-
-          setLocalPartnersList(prev => {
-            const list = Array.isArray(prev) ? prev : [];
-            const exists = list.some(isMatchPartner);
-            if (exists) {
-              return list.map(p => isMatchPartner(p) ? registered : p);
-            }
-            return [registered, ...list];
-          });
 
           window.dispatchEvent(new Event("storage-sync-updated"));
         } catch (e) {
