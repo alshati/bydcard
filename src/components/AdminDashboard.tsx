@@ -567,7 +567,7 @@ export default function AdminDashboard({
       setIsLoading(false);
     }
 
-   // Load Viewer Accounts with LocalStorage fallback & merge
+    // Load Viewer Accounts with LocalStorage fallback & merge
     if (!isViewer) {
       try {
         const viewersRes = await fetch("/api/admin/viewers", {
@@ -594,6 +594,7 @@ export default function AdminDashboard({
         setViewerAccounts(localList);
       }
     }
+  };
 
 const handleCreateViewerAccount = (e: React.FormEvent) => {
     e.preventDefault();
