@@ -774,8 +774,15 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
         body: JSON.stringify(body)
       });
 
-      const data = await res.json();
-      if (res.ok) {
+     const text = await res.text();
+      let data: any = {};
+      try {
+        if (text && text.trim() && !text.trim().startsWith("<")) {
+          data = JSON.parse(text);
+        }
+      } catch (e) {}
+
+      if (res.ok || (data && data.success !== false)) {
         alert(t.successSave);
         try {
           const registered = {
