@@ -1592,7 +1592,7 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
   };
 
 
-  // PARTNER CRUD ACTIONS
+// PARTNER CRUD ACTIONS
   const handleSavePartner = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!partnerForm.companyName || !partnerForm.companyNameAr) {
@@ -1606,55 +1606,55 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
     const sectorObj = sectorsList.find(s => s.en === partnerForm.sector);
     const sectorAr = sectorObj ? sectorObj.ar : partnerForm.sector;
 
-    // Generate dynamic fallback credentials and values if they are left empty
-    const cleanCompanyName = partnerForm.companyName.trim();
-    const fallbackUsername = partnerForm.username?.trim() || (cleanCompanyName.toLowerCase().replace(/[^a-z0-9]/g, "") + "_" + Math.floor(Math.random() * 1000));
-    const fallbackPassword = partnerForm.password?.trim() || "123456";
-    const fallbackEmail = partnerForm.email?.trim() || (fallbackUsername + "@byd-network.com");
-    const fallbackPhone = partnerForm.phone?.trim() || "07700000000";
-    const fallbackDiscount = partnerForm.discount?.trim() || "10%";
+    // Generate dynamic fallback credentials and values if they are left empty
+    const cleanCompanyName = partnerForm.companyName.trim();
+    const fallbackUsername = partnerForm.username?.trim() || (cleanCompanyName.toLowerCase().replace(/[^a-z0-9]/g, "") + "_" + Math.floor(Math.random() * 1000));
+    const fallbackPassword = partnerForm.password?.trim() || "123456";
+    const fallbackEmail = partnerForm.email?.trim() || (fallbackUsername + "@byd-network.com");
+    const fallbackPhone = partnerForm.phone?.trim() || "07700000000";
+    const fallbackDiscount = partnerForm.discount?.trim() || "10%";
 
-    const body = {
-      ...partnerForm,
-      username: fallbackUsername,
-      password: fallbackPassword,
-      email: fallbackEmail,
-      phone: fallbackPhone,
-      discount: fallbackDiscount,
-      discountEn: partnerForm.discountEn?.trim() || fallbackDiscount,
-      discountAr: partnerForm.discountAr?.trim() || fallbackDiscount,
-      provinceAr,
-      sectorAr
-    };
+    const body = {
+      ...partnerForm,
+      username: fallbackUsername,
+      password: fallbackPassword,
+      email: fallbackEmail,
+      phone: fallbackPhone,
+      discount: fallbackDiscount,
+      discountEn: partnerForm.discountEn?.trim() || fallbackDiscount,
+      discountAr: partnerForm.discountAr?.trim() || fallbackDiscount,
+      provinceAr,
+      sectorAr
+    };
 
-    const url = editingPartner ? `/api/partners/${editingPartner.id}` : "/api/partners";
-    const method = editingPartner ? "PUT" : "POST";
+    const url = editingPartner ? `/api/partners/${editingPartner.id}` : "/api/partners";
+    const method = editingPartner ? "PUT" : "POST";
 
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${adminToken}`
-        },
-        body: JSON.stringify(body)
-      });
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${adminToken}`
+        },
+        body: JSON.stringify(body)
+      });
 
-     const text = await res.text();
-let data: any = {};
-try {
-  if (text && text.trim() && !text.trim().startsWith("<")) {
-    data = JSON.parse(text);
-  }
-} catch (e) {}
+      const text = await res.text();
+      let data: any = {};
+      try {
+        if (text && text.trim() && !text.trim().startsWith("<")) {
+          data = JSON.parse(text);
+        }
+      } catch (e) {}
 
-if (res.ok || (data && data.success !== false)) {
-        alert(t.successSave);
-        try {
-          const registered = {
-            ...(data.partner || body),
-            feePaidIqd: (data.partner || body).feePaidIqd !== undefined ? (data.partner || body).feePaidIqd : 150000
-          };
+      if (res.ok || (data && data.success !== false)) {
+        alert(t.successSave);
+        try {
+          const registered = {
+            ...(data.partner || body),
+            feePaidIqd: (data.partner || body).feePaidIqd !== undefined ? (data.partner || body).feePaidIqd : 150000
+          };
 
           // Update byd-custom-partners
           const current = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
@@ -1674,7 +1674,7 @@ if (res.ok || (data && data.success !== false)) {
           if (idx > -1) {
             current[idx] = registered;
           } else {
-            current.push(registered);
+            current.unshift(registered);
           }
           safeSetLocalStorage("byd-custom-partners", JSON.stringify(current));
 
@@ -1688,21 +1688,21 @@ if (res.ok || (data && data.success !== false)) {
           }
           safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(companiesArray));
 
-          // تحديث الواجهة بشكل آمن (إضافة إذا كان جديداً، وتعديل إذا كان موجوداً)
+          // تحديث الواجهة بشكل آمن يتيح الإضافة والتعديل معاً دون اختفاء
           setPartners(prev => {
             const list = Array.isArray(prev) ? prev : [];
-            const exists = list.some(p => p.id === registered.id || p.companyName === registered.companyName);
+            const exists = list.some(isMatchPartner);
             if (exists) {
-              return list.map(p => (p.id === registered.id || p.companyName === registered.companyName) ? registered : p);
+              return list.map(p => isMatchPartner(p) ? registered : p);
             }
             return [registered, ...list];
           });
 
           setLocalPartnersList(prev => {
             const list = Array.isArray(prev) ? prev : [];
-            const exists = list.some(p => p.id === registered.id || p.companyName === registered.companyName);
+            const exists = list.some(isMatchPartner);
             if (exists) {
-              return list.map(p => (p.id === registered.id || p.companyName === registered.companyName) ? registered : p);
+              return list.map(p => isMatchPartner(p) ? registered : p);
             }
             return [registered, ...list];
           });
@@ -1720,7 +1720,8 @@ if (res.ok || (data && data.success !== false)) {
       console.error(err);
     }
   };
-const handleEditPartnerClick = (partner: Partner) => {
+
+  const handleEditPartnerClick = (partner: Partner) => {
     if (!partner) return;
     try {
       setEditingPartner(partner);
@@ -1873,7 +1874,6 @@ const handleEditPartnerClick = (partner: Partner) => {
       discountAr: "10%"
     });
   };
-
 
   // CARD CRUD ACTIONS
   const handleSaveCard = async (e: React.FormEvent) => {
