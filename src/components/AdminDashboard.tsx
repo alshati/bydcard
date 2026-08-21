@@ -1640,15 +1640,8 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
         body: JSON.stringify(body)
       });
 
-      const text = await res.text();
-      let data: any = {};
-      try {
-        if (text && text.trim() && !text.trim().startsWith("<")) {
-          data = JSON.parse(text);
-        }
-      } catch (e) {}
-
-      if (res.ok || (data && data.success !== false)) {
+      const data = await res.json();
+      if (res.ok) {
         alert(t.successSave);
         try {
           const registered = {
@@ -1656,7 +1649,7 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
             feePaidIqd: (data.partner || body).feePaidIqd !== undefined ? (data.partner || body).feePaidIqd : 150000
           };
 
-          // Update byd-custom-partners (الطريقة الأصلية البسيطة والآمنة)
+          // Update byd-custom-partners
           const current = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
           const isMatchPartner = (p: any) => {
             if (editingPartner) {
@@ -1703,33 +1696,27 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
   };
 
   const handleEditPartnerClick = (partner: Partner) => {
-    if (!partner) return;
-    try {
-      setEditingPartner(partner);
-      setPartnerForm({
-        companyName: partner.companyName || "",
-        companyNameAr: partner.companyNameAr || "",
-        sector: partner.sector || "Restaurant",
-        logoUrl: partner.logoUrl || "",
-        promoVideoUrl: partner.promoVideoUrl || "",
-        province: partner.province || "Baghdad",
-        expiryDate: partner.expiryDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-        status: partner.status || "Active",
-        feePaidIqd: partner.feePaidIqd || (partner.feePaidUsd ? partner.feePaidUsd * 1500 : 150000),
-        feePaidUsd: partner.feePaidUsd || 100,
-        username: partner.username || "",
-        password: partner.password || "",
-        email: partner.email || "",
-        phone: partner.phone || "",
-        discount: partner.discount || "10%",
-        discountEn: partner.discountEn || partner.discount || "10%",
-        discountAr: partner.discountAr || partner.discount || "10%"
-      });
-      setShowPartnerForm(true);
-    } catch (err) {
-      console.error("Error opening partner edit modal:", err);
-      alert("تعذر فتح نموذج التعديل.");
-    }
+    setEditingPartner(partner);
+    setPartnerForm({
+      companyName: partner.companyName,
+      companyNameAr: partner.companyNameAr,
+      sector: partner.sector,
+      logoUrl: partner.logoUrl,
+      promoVideoUrl: partner.promoVideoUrl,
+      province: partner.province,
+      expiryDate: partner.expiryDate,
+      status: partner.status,
+      feePaidIqd: partner.feePaidIqd || (partner.feePaidUsd ? partner.feePaidUsd * 1500 : 150000),
+      feePaidUsd: partner.feePaidUsd || 100,
+      username: partner.username || "",
+      password: partner.password || "",
+      email: partner.email || "",
+      phone: partner.phone || "",
+      discount: partner.discount || "10%",
+      discountEn: partner.discountEn || partner.discount || "10%",
+      discountAr: partner.discountAr || partner.discount || "10%"
+    });
+    setShowPartnerForm(true);
   };
 
   const handleTogglePartnerStatus = async (partner: Partner) => {
