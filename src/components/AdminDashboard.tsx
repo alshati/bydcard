@@ -1678,7 +1678,7 @@ if (res.ok || (data && data.success !== false)) {
           }
           safeSetLocalStorage("byd-custom-partners", JSON.stringify(current));
 
-          // Update BYD_COMPANIES
+         // Update BYD_COMPANIES
           const companiesArray = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
           const idxC = companiesArray.findIndex(isMatchPartner);
           if (idxC > -1) {
@@ -1687,6 +1687,10 @@ if (res.ok || (data && data.success !== false)) {
             companiesArray.push(registered);
           }
           safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(companiesArray));
+
+          // تحديث الواجهة فوراً لضمان عدم اختفاء الشركة عند تعديل الخصم أو أي حقل
+          setPartners(prev => prev.map(p => (p.id === registered.id || p.companyName === registered.companyName) ? registered : p));
+          setLocalPartnersList(prev => prev.map((p: any) => (p.id === registered.id || p.companyName === registered.companyName) ? registered : p));
 
           window.dispatchEvent(new Event("storage-sync-updated"));
         } catch (e) {
