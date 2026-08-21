@@ -84,11 +84,30 @@ export default function SecureAdminRouter({
       return;
     }
 
-    setLoginLoading(true);
-    setLoginError("");
-
     const cleanUser = adminUsername.trim();
     const cleanPass = adminPassword.trim();
+
+    // 1. التحقق المحلي الفوري من حسابات المراقبين والمدققين المخزنة
+    try {
+      const localViewers = JSON.parse(localStorage.getItem("BYD_VIEWER_ACCOUNTS") || "[]");
+      const matchedViewer = localViewers.find((v: any) => v.username === cleanUser && v.password === cleanPass);
+
+      if (matchedViewer) {
+        setIsAdminLoggedIn(true);
+        setAdminToken("viewer-token-" + matchedViewer.id);
+        setUserRole("viewer");
+        setUserName(matchedViewer.name || matchedViewer.username);
+        localStorage.setItem("byd-admin-token", "viewer-token-" + matchedViewer.id);
+        localStorage.setItem("byd-is-viewer", "true");
+        setAdminUsername("");
+        setAdminPassword("");
+        setLoginLoading(false);
+        return;
+      }
+    } catch (e) {}
+
+    setLoginLoading(true);
+    setLoginError("");
 
     try {
       const res = await fetch("/api/admin/login", {
@@ -129,7 +148,6 @@ export default function SecureAdminRouter({
     }
     setLoginLoading(false);
   };
-
   const handleLogout = async () => {
     try {
       await fetch("/api/admin/logout", {
