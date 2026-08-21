@@ -1678,7 +1678,7 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
           }
           safeSetLocalStorage("byd-custom-partners", JSON.stringify(current));
 
-        // Update BYD_COMPANIES
+          // Update BYD_COMPANIES
           const companiesArray = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
           const idxC = companiesArray.findIndex(isMatchPartner);
           if (idxC > -1) {
@@ -1687,16 +1687,6 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
             companiesArray.push(registered);
           }
           safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(companiesArray));
-
-          // تحديث الواجهة بشكل آمن يتيح الإضافة والتعديل معاً دون اختفاء
-          setPartners(prev => {
-            const list = Array.isArray(prev) ? prev : [];
-            const exists = list.some(isMatchPartner);
-            if (exists) {
-              return list.map(p => isMatchPartner(p) ? registered : p);
-            }
-            return [registered, ...list];
-          });
 
           setLocalPartnersList(prev => {
             const list = Array.isArray(prev) ? prev : [];
@@ -1874,7 +1864,7 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
       discountAr: "10%"
     });
   };
-
+  
   // CARD CRUD ACTIONS
   const handleSaveCard = async (e: React.FormEvent) => {
     e.preventDefault();
