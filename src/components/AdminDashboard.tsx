@@ -1606,7 +1606,7 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
     const sectorObj = sectorsList.find(s => s.en === partnerForm.sector);
     const sectorAr = sectorObj ? sectorObj.ar : partnerForm.sector;
 
-    // Generate dynamic fallback credentials and values if they are left empty
+   // Generate dynamic fallback credentials and values if they are left empty
     const cleanCompanyName = partnerForm.companyName.trim();
     const fallbackUsername = partnerForm.username?.trim() || (cleanCompanyName.toLowerCase().replace(/[^a-z0-9]/g, "") + "_" + Math.floor(Math.random() * 1000));
     const fallbackPassword = partnerForm.password?.trim() || "123456";
@@ -1655,6 +1655,37 @@ if (res.ok || (data && data.success !== false)) {
             ...(data.partner || body),
             feePaidIqd: (data.partner || body).feePaidIqd !== undefined ? (data.partner || body).feePaidIqd : 150000
           };
+
+          const customPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
+          const allPartners = JSON.parse(localStorage.getItem("BYD_PARTNERS") || "[]");
+          
+          const isMatch = (p: any) => p.id === registered.id || (p.companyName && registered.companyName && p.companyName.toLowerCase() === registered.companyName.toLowerCase());
+          
+          const idxC = customPartners.findIndex(isMatch);
+          if (idxC > -1) customPartners[idxC] = registered;
+          else customPartners.unshift(registered);
+          safeSetLocalStorage("byd-custom-partners", JSON.stringify(customPartners));
+
+          const idxA = allPartners.findIndex(isMatch);
+          if (idxA > -1) allPartners[idxA] = registered;
+          else allPartners.unshift(registered);
+          safeSetLocalStorage("BYD_PARTNERS", JSON.stringify(allPartners));
+
+          window.dispatchEvent(new Event("storage-sync-updated"));
+        } catch (e) {
+          console.error("Local storage partner backup error:", e);
+        }
+        setShowPartnerForm(false);
+        setEditingPartner(null);
+        resetPartnerForm();
+        loadAllData();
+      } else {
+        alert(data.message || t.errorFill);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
           // Update byd-custom-partners
           const current = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
