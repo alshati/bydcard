@@ -1696,27 +1696,33 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
   };
 
   const handleEditPartnerClick = (partner: Partner) => {
-    setEditingPartner(partner);
-    setPartnerForm({
-      companyName: partner.companyName,
-      companyNameAr: partner.companyNameAr,
-      sector: partner.sector,
-      logoUrl: partner.logoUrl,
-      promoVideoUrl: partner.promoVideoUrl,
-      province: partner.province,
-      expiryDate: partner.expiryDate,
-      status: partner.status,
-      feePaidIqd: partner.feePaidIqd || (partner.feePaidUsd ? partner.feePaidUsd * 1500 : 150000),
-      feePaidUsd: partner.feePaidUsd || 100,
-      username: partner.username || "",
-      password: partner.password || "",
-      email: partner.email || "",
-      phone: partner.phone || "",
-      discount: partner.discount || "10%",
-      discountEn: partner.discountEn || partner.discount || "10%",
-      discountAr: partner.discountAr || partner.discount || "10%"
-    });
-    setShowPartnerForm(true);
+    if (!partner) return;
+    try {
+      setEditingPartner(partner);
+      setPartnerForm({
+        companyName: partner.companyName || "",
+        companyNameAr: partner.companyNameAr || "",
+        sector: partner.sector || "Restaurant",
+        logoUrl: partner.logoUrl || "",
+        promoVideoUrl: partner.promoVideoUrl || "",
+        province: partner.province || "Baghdad",
+        expiryDate: partner.expiryDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+        status: partner.status || "Active",
+        feePaidIqd: partner.feePaidIqd || (partner.feePaidUsd ? partner.feePaidUsd * 1500 : 150000),
+        feePaidUsd: partner.feePaidUsd || 100,
+        username: partner.username || "",
+        password: partner.password || "",
+        email: partner.email || "",
+        phone: partner.phone || "",
+        discount: partner.discount || "10%",
+        discountEn: partner.discountEn || partner.discount || "10%",
+        discountAr: partner.discountAr || partner.discount || "10%"
+      });
+      setShowPartnerForm(true);
+    } catch (err) {
+      console.error("Error opening partner edit modal:", err);
+      alert("تعذر فتح نموذج التعديل.");
+    }
   };
 
   const handleTogglePartnerStatus = async (partner: Partner) => {
