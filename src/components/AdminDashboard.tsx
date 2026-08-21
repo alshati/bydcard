@@ -1678,7 +1678,7 @@ if (res.ok || (data && data.success !== false)) {
           }
           safeSetLocalStorage("byd-custom-partners", JSON.stringify(current));
 
-         // Update BYD_COMPANIES
+        // Update BYD_COMPANIES
           const companiesArray = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
           const idxC = companiesArray.findIndex(isMatchPartner);
           if (idxC > -1) {
@@ -1688,9 +1688,24 @@ if (res.ok || (data && data.success !== false)) {
           }
           safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(companiesArray));
 
-          // تحديث الواجهة فوراً لضمان عدم اختفاء الشركة عند تعديل الخصم أو أي حقل
-          setPartners(prev => prev.map(p => (p.id === registered.id || p.companyName === registered.companyName) ? registered : p));
-          setLocalPartnersList(prev => prev.map((p: any) => (p.id === registered.id || p.companyName === registered.companyName) ? registered : p));
+          // تحديث الواجهة بشكل آمن (إضافة إذا كان جديداً، وتعديل إذا كان موجوداً)
+          setPartners(prev => {
+            const list = Array.isArray(prev) ? prev : [];
+            const exists = list.some(p => p.id === registered.id || p.companyName === registered.companyName);
+            if (exists) {
+              return list.map(p => (p.id === registered.id || p.companyName === registered.companyName) ? registered : p);
+            }
+            return [registered, ...list];
+          });
+
+          setLocalPartnersList(prev => {
+            const list = Array.isArray(prev) ? prev : [];
+            const exists = list.some(p => p.id === registered.id || p.companyName === registered.companyName);
+            if (exists) {
+              return list.map(p => (p.id === registered.id || p.companyName === registered.companyName) ? registered : p);
+            }
+            return [registered, ...list];
+          });
 
           window.dispatchEvent(new Event("storage-sync-updated"));
         } catch (e) {
@@ -1705,7 +1720,6 @@ if (res.ok || (data && data.success !== false)) {
       console.error(err);
     }
   };
-
 const handleEditPartnerClick = (partner: Partner) => {
     if (!partner) return;
     try {
