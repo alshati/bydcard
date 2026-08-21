@@ -1606,86 +1606,55 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
     const sectorObj = sectorsList.find(s => s.en === partnerForm.sector);
     const sectorAr = sectorObj ? sectorObj.ar : partnerForm.sector;
 
-   // Generate dynamic fallback credentials and values if they are left empty
-    const cleanCompanyName = partnerForm.companyName.trim();
-    const fallbackUsername = partnerForm.username?.trim() || (cleanCompanyName.toLowerCase().replace(/[^a-z0-9]/g, "") + "_" + Math.floor(Math.random() * 1000));
-    const fallbackPassword = partnerForm.password?.trim() || "123456";
-    const fallbackEmail = partnerForm.email?.trim() || (fallbackUsername + "@byd-network.com");
-    const fallbackPhone = partnerForm.phone?.trim() || "07700000000";
-    const fallbackDiscount = partnerForm.discount?.trim() || "10%";
+    // Generate dynamic fallback credentials and values if they are left empty
+    const cleanCompanyName = partnerForm.companyName.trim();
+    const fallbackUsername = partnerForm.username?.trim() || (cleanCompanyName.toLowerCase().replace(/[^a-z0-9]/g, "") + "_" + Math.floor(Math.random() * 1000));
+    const fallbackPassword = partnerForm.password?.trim() || "123456";
+    const fallbackEmail = partnerForm.email?.trim() || (fallbackUsername + "@byd-network.com");
+    const fallbackPhone = partnerForm.phone?.trim() || "07700000000";
+    const fallbackDiscount = partnerForm.discount?.trim() || "10%";
 
-    const body = {
-      ...partnerForm,
-      username: fallbackUsername,
-      password: fallbackPassword,
-      email: fallbackEmail,
-      phone: fallbackPhone,
-      discount: fallbackDiscount,
-      discountEn: partnerForm.discountEn?.trim() || fallbackDiscount,
-      discountAr: partnerForm.discountAr?.trim() || fallbackDiscount,
-      provinceAr,
-      sectorAr
-    };
+    const body = {
+      ...partnerForm,
+      username: fallbackUsername,
+      password: fallbackPassword,
+      email: fallbackEmail,
+      phone: fallbackPhone,
+      discount: fallbackDiscount,
+      discountEn: partnerForm.discountEn?.trim() || fallbackDiscount,
+      discountAr: partnerForm.discountAr?.trim() || fallbackDiscount,
+      provinceAr,
+      sectorAr
+    };
 
-    const url = editingPartner ? `/api/partners/${editingPartner.id}` : "/api/partners";
-    const method = editingPartner ? "PUT" : "POST";
+    const url = editingPartner ? `/api/partners/${editingPartner.id}` : "/api/partners";
+    const method = editingPartner ? "PUT" : "POST";
 
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${adminToken}`
-        },
-        body: JSON.stringify(body)
-      });
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${adminToken}`
+        },
+        body: JSON.stringify(body)
+      });
 
-     const text = await res.text();
+     const text = await res.text();
 let data: any = {};
 try {
-  if (text && text.trim() && !text.trim().startsWith("<")) {
-    data = JSON.parse(text);
-  }
+  if (text && text.trim() && !text.trim().startsWith("<")) {
+    data = JSON.parse(text);
+  }
 } catch (e) {}
 
 if (res.ok || (data && data.success !== false)) {
-        alert(t.successSave);
-        try {
-          const registered = {
-            ...(data.partner || body),
-            feePaidIqd: (data.partner || body).feePaidIqd !== undefined ? (data.partner || body).feePaidIqd : 150000
-          };
-
-          const customPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-          const allPartners = JSON.parse(localStorage.getItem("BYD_PARTNERS") || "[]");
-          
-          const isMatch = (p: any) => p.id === registered.id || (p.companyName && registered.companyName && p.companyName.toLowerCase() === registered.companyName.toLowerCase());
-          
-          const idxC = customPartners.findIndex(isMatch);
-          if (idxC > -1) customPartners[idxC] = registered;
-          else customPartners.unshift(registered);
-          safeSetLocalStorage("byd-custom-partners", JSON.stringify(customPartners));
-
-          const idxA = allPartners.findIndex(isMatch);
-          if (idxA > -1) allPartners[idxA] = registered;
-          else allPartners.unshift(registered);
-          safeSetLocalStorage("BYD_PARTNERS", JSON.stringify(allPartners));
-
-          window.dispatchEvent(new Event("storage-sync-updated"));
-        } catch (e) {
-          console.error("Local storage partner backup error:", e);
-        }
-        setShowPartnerForm(false);
-        setEditingPartner(null);
-        resetPartnerForm();
-        loadAllData();
-      } else {
-        alert(data.message || t.errorFill);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
+        alert(t.successSave);
+        try {
+          const registered = {
+            ...(data.partner || body),
+            feePaidIqd: (data.partner || body).feePaidIqd !== undefined ? (data.partner || body).feePaidIqd : 150000
+          };
 
           // Update byd-custom-partners
           const current = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
