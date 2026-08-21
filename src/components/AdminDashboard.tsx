@@ -532,8 +532,27 @@ export default function AdminDashboard({
       const fetchedCards = await parseJSON(cardsRes);
 
       if (Array.isArray(fetchedMembers)) setMembers(fetchedMembers);
-      if (Array.isArray(fetchedPartners)) setPartners(fetchedPartners);
       if (Array.isArray(fetchedCards)) setCards(fetchedCards);
+
+      // دمج الشركات القادمة من السيرفر مع الشركات المحفوظة محلياً لضمان عدم اختفائها أبداً
+      const localCustomPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
+      const localBydCompanies = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
+      const serverPartners = Array.isArray(fetchedPartners) ? fetchedPartners : [];
+
+      // دمج القوائم بدون تكرار وبناء قائمة موحدة شاملة
+      const mergedPartnersMap = new Map();
+      [...localBydCompanies, ...localCustomPartners, ...serverPartners].forEach((p: any) => {
+        const key = p.id || p.username || (p.companyName ? p.companyName.toLowerCase() : null);
+        if (key && !mergedPartnersMap.has(key)) {
+          mergedPartnersMap.set(key, p);
+        } else if (key) {
+          // دمج وتحديث البيانات لو وجدت مسبقاً
+          mergedPartnersMap.set(key, { ...mergedPartnersMap.get(key), ...p });
+        }
+      });
+
+      const finalPartnersList = Array.from(mergedPartnersMap.values());
+      setPartners(finalPartnersList);
       
       setFinancials(fetchedFin || {
         totalRevenueIqd: 0,
