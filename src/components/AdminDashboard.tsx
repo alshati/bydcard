@@ -1711,9 +1711,13 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
         setEditingPartner(null);
         resetPartnerForm();
         loadAllData();
+      } else {
+        // إظهار السبب في حال رفض السيرفر (مثل تكرار الاسم أو اسم المستخدم)
+        alert(data.messageAr || data.message || "فشل حفظ البيانات من الخادم.");
       }
     } catch (err) {
       console.error(err);
+      alert("حدث خطأ في الاتصال بالخادم.");
     }
   };
 
