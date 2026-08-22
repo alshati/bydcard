@@ -499,7 +499,7 @@ export default function AdminDashboard({
   // Video Preview Modal
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
 
-// Load All Dashboard Data (النسخة الكاملة الآمنة 100% مع حسابات المراقبة والتدقيق)
+// Load All Dashboard Data (النسخة الكاملة الآمنة والمحدثة لدمج الشركاء محلياً ومع السيرفر)
   const loadAllData = async () => {
     setIsLoading(true);
 
@@ -534,25 +534,25 @@ export default function AdminDashboard({
       if (Array.isArray(fetchedMembers)) setMembers(fetchedMembers);
       if (Array.isArray(fetchedCards)) setCards(fetchedCards);
 
-      // دمج الشركات القادمة من السيرفر مع الشركات المحفوظة محلياً لضمان عدم اختفائها أبداً
+      // 1. جلب البيانات من الذاكرة المحلية (byd-custom-partners و BYD_COMPANIES)
       const localCustomPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
       const localBydCompanies = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
       const serverPartners = Array.isArray(fetchedPartners) ? fetchedPartners : [];
 
-      // دمج القوائم بدون تكرار وبناء قائمة موحدة شاملة
+      // 2. دمج الشركات بدون تكرار لضمان ظهورها فوراً في الأدمن وفي صفحة فحص البطاقات
       const mergedPartnersMap = new Map();
-      [...localBydCompanies, ...localCustomPartners, ...serverPartners].forEach((p: any) => {
+      [...serverPartners, ...localBydCompanies, ...localCustomPartners].forEach((p: any) => {
         const key = p.id || p.username || (p.companyName ? p.companyName.toLowerCase() : null);
         if (key && !mergedPartnersMap.has(key)) {
           mergedPartnersMap.set(key, p);
         } else if (key) {
-          // دمج وتحديث البيانات لو وجدت مسبقاً
           mergedPartnersMap.set(key, { ...mergedPartnersMap.get(key), ...p });
         }
       });
 
       const finalPartnersList = Array.from(mergedPartnersMap.values());
-      setPartners(finalPartnersList);
+      setPartners(serverPartners);
+      setLocalPartnersList(finalPartnersList); // تعبئة القائمة المحلية لضمان قراءتها في الـ useMemo
       
       setFinancials(fetchedFin || {
         totalRevenueIqd: 0,
@@ -563,19 +563,13 @@ export default function AdminDashboard({
         ]
       });
 
-      // مزامنة البيانات المحلية
+      // مزامنة البيانات المحلية للأفراد والشركات
       try {
         const localMembers = JSON.parse(localStorage.getItem("byd-custom-members") || "[]");
-        const localPartners = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
         if (Array.isArray(fetchedMembers)) {
           setLocalMembersList([...fetchedMembers, ...localMembers.filter((lm: any) => !fetchedMembers.find((fm: any) => fm.id === lm.id))]);
         } else {
           setLocalMembersList(localMembers);
-        }
-        if (Array.isArray(fetchedPartners)) {
-          setLocalPartnersList([...fetchedPartners, ...localPartners.filter((lp: any) => !fetchedPartners.find((fp: any) => fp.id === lp.id))]);
-        } else {
-          setLocalPartnersList(localPartners);
         }
       } catch (e) {}
 
@@ -597,7 +591,6 @@ export default function AdminDashboard({
         const serverList = Array.isArray(fetchedViewers) ? fetchedViewers : [];
         const localList = JSON.parse(localStorage.getItem("BYD_VIEWER_ACCOUNTS") || "[]");
 
-        // دمج القائمتين معاً بدون تكرار
         const combined = [...localList];
         serverList.forEach((sItem: any) => {
           if (!combined.some((c: any) => c.username === sItem.username)) {
