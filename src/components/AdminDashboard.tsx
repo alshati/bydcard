@@ -1639,10 +1639,10 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
       sectorAr
     };
 
-   const url = editingPartner ? `/api/partners/${editingPartner.id}` : "/api/partners";
+    const url = editingPartner ? `/api/partners/${editingPartner.id}` : "/api/partners";
     const method = editingPartner ? "PUT" : "POST";
 
-    // محاولة الاتصال بالخادم أو التخزين المباشر بسلاسة ليتوافق مع بيئة Vercel
+    // محاولة الاتصال بالخادم إن وجد، أو المتابعة بسلاسة في بيئة Vercel
     let savedDataFromServer: any = null;
     try {
       const res = await fetch(url, {
@@ -1661,7 +1661,7 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
       console.log("Server API offline on Vercel, proceeding with local client sync:", apiErr);
     }
 
-    // التنفيذ المحلي المضمون 100% بغض النظر عن حالة سيرفر Vercel
+    // التنفيذ المحلي المضمون لتحديث المفاتيح الثلاثة دفعة واحدة
     try {
       alert(t.successSave);
       const registered = {
@@ -1670,6 +1670,8 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
         feePaidIqd: (savedDataFromServer || body).feePaidIqd !== undefined ? (savedDataFromServer || body).feePaidIqd : 150000
       };
 
+      // Update byd-custom-partners
+      const current = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
       const isMatchPartner = (p: any) => {
         if (editingPartner) {
           if (editingPartner.id && p.id && p.id === editingPartner.id) return true;
@@ -1682,6 +1684,7 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
         return false;
       };
 
+      // تحديث مفاتيح التخزين المحلي الثلاثة معاً لضمان الظهور الفوري وسلاسة الدخول
       ["byd-custom-partners", "BYD_COMPANIES", "BYD_PARTNERS"].forEach(key => {
         const list = JSON.parse(localStorage.getItem(key) || "[]");
         const idx = list.findIndex(isMatchPartner);
@@ -1700,70 +1703,12 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
       resetPartnerForm();
       loadAllData();
     } catch (e) {
-      console.error("Local save error:", e);
+      console.error("Local storage B2B admin backup error:", e);
       alert("حدث خطأ أثناء الحفظ المحلي.");
-    }
-
-          // Update byd-custom-partners
-          const current = JSON.parse(localStorage.getItem("byd-custom-partners") || "[]");
-          const isMatchPartner = (p: any) => {
-            if (editingPartner) {
-              if (editingPartner.id && p.id && p.id === editingPartner.id) return true;
-              if (editingPartner.username && p.username && p.username.toLowerCase() === editingPartner.username.toLowerCase()) return true;
-              if (editingPartner.companyName && p.companyName && p.companyName.toLowerCase() === editingPartner.companyName.toLowerCase()) return true;
-            }
-            if (registered.id && p.id && p.id === registered.id) return true;
-            if (registered.username && p.username && p.username.toLowerCase() === registered.username.toLowerCase()) return true;
-            if (registered.companyName && p.companyName && p.companyName.toLowerCase() === registered.companyName.toLowerCase()) return true;
-            return false;
-          };
-
-          const idx = current.findIndex(isMatchPartner);
-          if (idx > -1) {
-            current[idx] = registered;
-          } else {
-            current.push(registered);
-          }
-          safeSetLocalStorage("byd-custom-partners", JSON.stringify(current));
-
-         // Update BYD_COMPANIES
-          const companiesArray = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
-          const idxC = companiesArray.findIndex(isMatchPartner);
-          if (idxC > -1) {
-            companiesArray[idxC] = registered;
-          } else {
-            companiesArray.push(registered);
-          }
-          safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(companiesArray));
-
-         // Update BYD_PARTNERS (مفتاح التحقق الخاص بتسجيل دخول الشركاء)
-          const partnersLoginArray = JSON.parse(localStorage.getItem("BYD_PARTNERS") || "[]");
-          const idxP = partnersLoginArray.findIndex(isMatchPartner);
-          if (idxP > -1) {
-            partnersLoginArray[idxP] = registered;
-          } else {
-            partnersLoginArray.push(registered);
-          }
-          safeSetLocalStorage("BYD_PARTNERS", JSON.stringify(partnersLoginArray));
-
-          window.dispatchEvent(new Event("storage-sync-updated"));
-        } catch (e) {
-          console.error("Local storage B2B admin backup error:", e);
-        }
-        setShowPartnerForm(false);
-        setEditingPartner(null);
-        resetPartnerForm();
-        loadAllData();
-      } else {
-        // إظهار السبب في حال رفض السيرفر (مثل تكرار الاسم أو اسم المستخدم)
-        alert(data.messageAr || data.message || "فشل حفظ البيانات من الخادم.");
-      }
-    } catch (err) {
-      console.error(err);
-      alert("حدث خطأ في الاتصال بالخادم.");
     }
   };
 
+  // PARTNER EDIT ACTION
   const handleEditPartnerClick = (partner: Partner) => {
     if (!partner) return;
     try {
@@ -1794,6 +1739,7 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
     }
   };
 
+  // PARTNER STATUS TOGGLE ACTION
   const handleTogglePartnerStatus = async (partner: Partner) => {
     const currentActive = isPartnerActive(partner);
     const newStatus = currentActive ? "Inactive" : "Active";
@@ -1851,6 +1797,7 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
     loadAllData();
   };
 
+  // PARTNER DELETE ACTION
   const handleDeletePartner = async (id: string) => {
     if (!confirm(t.confirmDelete)) return;
 
@@ -1896,6 +1843,7 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
     loadAllData();
   };
 
+  // RESET PARTNER FORM ACTION
   const resetPartnerForm = () => {
     setPartnerForm({
       companyName: "",
