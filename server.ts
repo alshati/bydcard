@@ -960,55 +960,46 @@ async function startServer() {
   });
 
   // Partner B2B Register
-  app.post("/api/partners/register", (req, res) => {
+  app.post("/api/partners", (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (isViewerSession(authHeader)) {
+      return res.status(403).json({ success: false, message: "Read-only viewer account cannot add partners.", messageAr: "حساب المراقبة لا يملك صلاحية إضافة شركاء." });
+    }
     const db = loadDatabase();
     const { companyName, companyNameAr, sector, sectorAr, email, username, password, phone, province, provinceAr, discount, discountEn, discountAr } = req.body;
 
-    const finalCompanyName = (companyName || "New Partner").trim();
-    const finalUsername = (username || (finalCompanyName.toLowerCase().replace(/[^a-z0-9]/g, "") + "_" + Math.floor(Math.random() * 1000))).trim();
-    const finalPassword = (password || "123456").trim();
-    const finalEmail = (email || (finalUsername + "@byd-network.com")).trim();
-    const finalPhone = (phone || "07700000000").trim();
+    // استخدام نفس قواعد التوليد التلقائي المضمونة لضمان عدم حدوث أي خطأ في بيانات الدخول
+    const finalCompanyName = (companyName || req.body.companyName || "New Partner").trim();
+    const finalUsername = (username || req.body.username || (finalCompanyName.toLowerCase().replace(/[^a-z0-9]/g, "") + "_" + Math.floor(Math.random() * 1000))).trim();
+    const finalPassword = (password || req.body.password || "123456").trim();
+    const finalEmail = (email || req.body.email || (finalUsername + "@byd-network.com")).trim();
+    const finalPhone = (phone || req.body.phone || "07700000000").trim();
 
-    // Check duplicate username or email
-    const duplicate = db.partners.some((p: Partner) => 
-      (p.username && p.username.toLowerCase() === finalUsername.toLowerCase()) || 
-      (p.email && p.email.toLowerCase() === finalEmail.toLowerCase())
-    );
-
-    if (duplicate) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Username or Corporate Email already registered.", 
-        messageAr: "اسم المستخدم أو البريد الإلكتروني للشركة مسجل بالفعل." 
-      });
-    }
-
-    const prov = province || "Baghdad";
+    const prov = province || req.body.province || "Baghdad";
     const coords = resolvePartnerCoords(prov, req.body.lat, req.body.lng);
 
     const newPartner: Partner = {
       id: "p-" + Date.now(),
       companyName: finalCompanyName,
-      companyNameAr: companyNameAr || finalCompanyName,
-      sector: sector || "Company",
-      sectorAr: sectorAr || "شركة",
+      companyNameAr: companyNameAr || req.body.companyNameAr || finalCompanyName,
+      sector: sector || req.body.sector || "Company",
+      sectorAr: sectorAr || req.body.sectorAr || "شركة",
       logoUrl: req.body.logoUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=200&auto=format&fit=crop",
       promoVideoUrl: req.body.promoVideoUrl || "",
       province: prov,
-      provinceAr: provinceAr || "بغداد",
-      expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-      status: "Active",
+      provinceAr: provinceAr || req.body.provinceAr || "بغداد",
+      expiryDate: req.body.expiryDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      status: req.body.status || "Active",
       tier: "B2B",
       feePaidIqd: req.body.feePaidIqd || 150000,
       feePaidUsd: req.body.feePaidUsd || 100,
-      email: finalEmail,
       username: finalUsername,
       password: finalPassword,
+      email: finalEmail,
       phone: finalPhone,
-      discount: discount || "10%",
-      discountEn: discountEn || discount || "10%",
-      discountAr: discountAr || discount || "10%",
+      discount: discount || req.body.discount || "10%",
+      discountEn: discountEn || req.body.discountEn || discount || "10%",
+      discountAr: discountAr || req.body.discountAr || discount || "10%",
       lat: coords.lat,
       lng: coords.lng,
       addressEn: req.body.addressEn || req.body.address || `${prov}, Iraq`,
@@ -1019,13 +1010,12 @@ async function startServer() {
     db.deletedPartners = db.deletedPartners || [];
     db.deletedPartners = db.deletedPartners.filter((name: string) => 
       name.toLowerCase() !== newPartner.companyName.toLowerCase() && 
-      name.toLowerCase() !== newPartner.username?.toLowerCase()
+      (newPartner.username ? name.toLowerCase() !== newPartner.username.toLowerCase() : true)
     );
     saveDatabase(db);
-
     res.json({ success: true, partner: newPartner });
   });
-
+  
   // Partner B2B Login
   app.post("/api/partners/login", (req, res) => {
     const db = loadDatabase();
