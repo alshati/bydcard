@@ -1683,7 +1683,7 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
           }
           safeSetLocalStorage("byd-custom-partners", JSON.stringify(current));
 
-          // Update BYD_COMPANIES
+         // Update BYD_COMPANIES
           const companiesArray = JSON.parse(localStorage.getItem("BYD_COMPANIES") || "[]");
           const idxC = companiesArray.findIndex(isMatchPartner);
           if (idxC > -1) {
@@ -1693,7 +1693,7 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
           }
           safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(companiesArray));
 
-          // Update BYD_PARTNERS (مفتاح التحقق الخاص بتسجيل دخول الشركاء)
+         // Update BYD_PARTNERS (مفتاح التحقق الخاص بتسجيل دخول الشركاء)
           const partnersLoginArray = JSON.parse(localStorage.getItem("BYD_PARTNERS") || "[]");
           const idxP = partnersLoginArray.findIndex(isMatchPartner);
           if (idxP > -1) {
