@@ -1693,6 +1693,16 @@ const handleDeleteViewerAccount = async (id: string, username: string) => {
           }
           safeSetLocalStorage("BYD_COMPANIES", JSON.stringify(companiesArray));
 
+          // Update BYD_PARTNERS (مفتاح التحقق الخاص بتسجيل دخول الشركاء)
+          const partnersLoginArray = JSON.parse(localStorage.getItem("BYD_PARTNERS") || "[]");
+          const idxP = partnersLoginArray.findIndex(isMatchPartner);
+          if (idxP > -1) {
+            partnersLoginArray[idxP] = registered;
+          } else {
+            partnersLoginArray.push(registered);
+          }
+          safeSetLocalStorage("BYD_PARTNERS", JSON.stringify(partnersLoginArray));
+
           window.dispatchEvent(new Event("storage-sync-updated"));
         } catch (e) {
           console.error("Local storage B2B admin backup error:", e);
